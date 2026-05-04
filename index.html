@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>달력형 가계부</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#d9826b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="가계부" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+</head>
+<body>
+  <div class="app" id="appPage">
+    <header class="header">
+      <div>
+        <p class="sub-title">Calendar Account Book</p>
+        <h1>달력형 가계부</h1>
+      </div>
+      <div class="header-buttons">
+        <div class="auth-box">
+          <span id="authStatus">로그인 전</span>
+          <button id="loginBtn" class="outline-btn" type="button">Google 로그인</button>
+        </div>
+        <button id="openStatsBtn" class="outline-btn">카테고리 통계</button>
+        <button id="openSettingsBtn" class="outline-btn">반복 설정</button>
+        <button id="openAppSettingsBtn" class="outline-btn">설정</button>
+      </div>
+    </header>
+
+    <section class="summary-grid">
+      <article class="summary-card income">
+        <span>실제 수입</span>
+        <strong id="actualIncome">0원</strong>
+        <small id="expectedIncome">예정 수입 0원</small>
+      </article>
+
+      <article class="summary-card expense">
+        <span>실제 지출</span>
+        <strong id="actualExpense">0원</strong>
+        <small id="expectedExpense">예정 지출 0원</small>
+      </article>
+
+      <button id="goBudgetBtn" class="summary-card balance clickable-card">
+        <span>사용 가능 잔액</span>
+        <strong id="availableMoneyMain">0원</strong>
+        <small id="actualBalanceSub">실제 잔액 0원</small>
+        <small id="allocatedMoney">나눈 돈 0원</small>
+      </button>
+    </section>
+
+    <section class="calendar-panel">
+      <div class="calendar-header">
+        <button id="prevMonthBtn" class="circle-btn">‹</button>
+        <h2 id="currentMonthTitle">2026년 5월</h2>
+        <button id="nextMonthBtn" class="circle-btn">›</button>
+      </div>
+
+      <div class="weekdays">
+        <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+      </div>
+
+      <div id="calendar" class="calendar"></div>
+    </section>
+
+    <section class="panel">
+      <div class="list-header">
+        <h2 id="selectedDateTitle">선택 날짜 내역</h2>
+        <button id="resetBtn" class="danger-btn">일반 내역 전체 삭제</button>
+      </div>
+
+      <ul id="dailyList" class="transaction-list"></ul>
+      <p id="emptyMessage" class="empty-message">선택한 날짜에 등록된 내역이 없습니다.</p>
+    </section>
+
+    <button id="openAddModalBtn" class="floating-add-btn">+</button>
+  </div>
+
+  <section id="budgetPage" class="budget-page hidden">
+    <div class="budget-container">
+      <header class="budget-header">
+        <div>
+          <p class="sub-title">Budget Split</p>
+          <h1>잔액 예산 나누기</h1>
+        </div>
+        <button id="backHomeBtn" class="outline-btn">달력으로 돌아가기</button>
+      </header>
+
+      <section class="summary-grid">
+        <article class="summary-card balance">
+          <span>실제 잔액</span>
+          <strong id="budgetTotalBalance">0원</strong>
+        </article>
+
+        <article class="summary-card expense">
+          <span>이미 나눈 돈</span>
+          <strong id="allocatedTotal">0원</strong>
+        </article>
+
+        <article class="summary-card income">
+          <span>사용 가능 잔액</span>
+          <strong id="unallocatedTotal">0원</strong>
+        </article>
+      </section>
+
+      <main class="content">
+        <section class="panel">
+          <h2>예산 배분 추가</h2>
+
+          <form id="budgetForm">
+            <div class="form-row">
+              <label for="budgetCategory">항목 직접 입력</label>
+              <input type="text" id="budgetCategory" placeholder="예: 식비, 교통비, 적금, 여행비" required />
+            </div>
+
+            <div class="form-row">
+              <label for="budgetAmount">금액</label>
+              <input type="number" id="budgetAmount" min="0" step="10000" placeholder="예: 100000" required />
+            </div>
+
+            <button type="submit" class="primary-btn" id="saveBudgetBtn">예산 나누기</button>
+          </form>
+
+          <div class="notice">
+            실제 잔액이 있어도 전부 써도 되는 돈은 아닐 수 있습니다. 식비, 교통비, 적금처럼 나누면 사용 가능 잔액을 쉽게 확인할 수 있습니다.
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>나눈 예산 목록</h2>
+          <ul id="budgetList" class="transaction-list"></ul>
+          <p id="budgetEmptyMessage" class="empty-message">아직 나눈 예산이 없습니다.</p>
+        </section>
+      </main>
+    </div>
+  </section>
+
+
+  <section id="monthlyBudgetPage" class="budget-page hidden">
+    <div class="budget-container">
+      <header class="budget-header">
+        <div>
+          <p class="sub-title">Monthly Budget Target</p>
+          <h1>월별 예산 목표</h1>
+        </div>
+        <button id="backHomeFromMonthlyBudgetBtn" class="outline-btn">달력으로 돌아가기</button>
+      </header>
+
+      <section class="summary-grid">
+        <article class="summary-card expense">
+          <span>이번 달 지출 예산</span>
+          <strong id="monthlyBudgetTotal">0원</strong>
+        </article>
+        <article class="summary-card expense">
+          <span>이번 달 실제 지출</span>
+          <strong id="monthlyBudgetUsed">0원</strong>
+        </article>
+        <article class="summary-card income">
+          <span>이번 달 남은 예산</span>
+          <strong id="monthlyBudgetRemaining">0원</strong>
+        </article>
+      </section>
+
+      <main class="content">
+        <section class="panel">
+          <h2>카테고리별 월 예산 추가</h2>
+
+          <form id="monthlyBudgetForm">
+            <div class="form-row">
+              <label for="monthlyBudgetCategory">카테고리</label>
+              <input type="text" id="monthlyBudgetCategory" placeholder="예: 식비, 교통비, 카페" required />
+            </div>
+
+            <div class="form-row">
+              <label for="monthlyBudgetAmount">예산 금액</label>
+              <input type="number" id="monthlyBudgetAmount" min="0" step="10000" placeholder="예: 300000" required />
+            </div>
+
+            <button type="submit" class="primary-btn" id="saveMonthlyBudgetBtn">월 예산 저장</button>
+          </form>
+
+          <div class="notice">
+            월별 예산 목표는 “이번 달에 얼마까지 쓸지”를 정하는 기능입니다. 예산에서 만든 카테고리는 달력 내역 입력의 지출 카테고리에도 자동으로 추가됩니다.
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>이번 달 카테고리별 예산 현황</h2>
+          <ul id="monthlyBudgetList" class="transaction-list"></ul>
+          <p id="monthlyBudgetEmptyMessage" class="empty-message">아직 설정한 월 예산이 없습니다.</p>
+        </section>
+      </main>
+    </div>
+  </section>
+
+  <div id="addModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div>
+          <p class="sub-title">Transaction</p>
+          <h2 id="addModalTitle">내역 추가</h2>
+        </div>
+        <button id="closeAddModalBtn" class="circle-btn">×</button>
+      </div>
+
+      <form id="transactionForm">
+        <div class="form-row">
+          <label for="type">구분</label>
+          <select id="type" required>
+            <option value="income">수입</option>
+            <option value="expense">지출</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="category-label-row">
+            <label>카테고리</label>
+            <button type="button" id="openCategoryManagerBtn" class="small-outline-btn">+ 만들기</button>
+          </div>
+          <div id="categoryButtons" class="category-buttons"></div>
+          <p id="categoryEmptyHint" class="category-empty-hint">아직 만든 카테고리가 없습니다. + 만들기에서 카테고리를 추가하세요.</p>
+        </div>
+
+        <div class="form-row">
+          <label for="amount">금액</label>
+          <input type="number" id="amount" placeholder="예: 10000" min="0" step="10000" required />
+        </div>
+
+        <div class="form-row">
+          <label for="memo">메모</label>
+          <input type="text" id="memo" placeholder="예: 점심 식사" required />
+        </div>
+
+        <button type="submit" class="primary-btn" id="saveTransactionBtn">저장하기</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="categoryManagerModal" class="modal hidden">
+    <div class="modal-box category-manager-box">
+      <div class="modal-header">
+        <div>
+          <p class="sub-title">Category Manager</p>
+          <h2>카테고리 만들기</h2>
+        </div>
+        <button id="closeCategoryManagerBtn" class="circle-btn">×</button>
+      </div>
+
+      <div class="notice">
+        카테고리는 수입/지출 구분별로 저장됩니다. 한 번 만든 카테고리는 삭제하기 전까지 계속 사용할 수 있습니다.
+      </div>
+
+      <div class="category-manager-top">
+        <button id="addCategoryToggleBtn" class="primary-btn compact-btn" type="button">+ 카테고리 추가</button>
+      </div>
+
+      <form id="categoryCreateForm" class="category-create-form hidden">
+        <div class="form-row">
+          <label for="newCategoryName">새 카테고리 이름</label>
+          <input type="text" id="newCategoryName" placeholder="예: 월급, 식비, 데이트비" />
+        </div>
+        <button class="primary-btn" type="submit">저장</button>
+      </form>
+
+      <h3 id="categoryManagerTitle">수입 카테고리 목록</h3>
+      <ul id="categoryManagerList" class="manager-list"></ul>
+      <p id="categoryManagerEmpty" class="empty-message">아직 만든 카테고리가 없습니다.</p>
+    </div>
+  </div>
+
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div>
+          <p class="sub-title">Monthly Repeat Settings</p>
+          <h2>반복 수입/고정 지출 설정</h2>
+        </div>
+        <button id="closeSettingsBtn" class="circle-btn">×</button>
+      </div>
+
+      <form id="recurringForm">
+        <div class="form-row">
+          <label for="recurringType">구분</label>
+          <select id="recurringType" required>
+            <option value="income">매월 반복 수입</option>
+            <option value="expense">매월 고정 지출</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label for="recurringDay">매월 적용일</label>
+          <select id="recurringDay" required></select>
+        </div>
+
+        <div class="form-row">
+          <div class="category-label-row">
+            <label>카테고리</label>
+            <button type="button" id="openRecurringCategoryManagerBtn" class="small-outline-btn">+ 만들기</button>
+          </div>
+          <div id="recurringCategoryButtons" class="category-buttons"></div>
+          <p id="recurringCategoryEmptyHint" class="category-empty-hint">아직 만든 카테고리가 없습니다. + 만들기에서 카테고리를 추가하세요.</p>
+        </div>
+
+        <div class="form-row">
+          <label for="recurringAmount">금액</label>
+          <input type="number" id="recurringAmount" placeholder="예: 500000" min="0" step="10000" required />
+        </div>
+
+        <div class="form-row">
+          <label for="recurringMemo">내용</label>
+          <input type="text" id="recurringMemo" placeholder="예: 월급, 휴대폰 요금, 구독료" required />
+        </div>
+
+        <button type="submit" class="primary-btn">반복 항목 추가</button>
+      </form>
+
+      <div class="notice">
+        반복 항목은 날짜가 되기 전에는 예정 수입/예정 지출로 표시되고, 날짜가 된 뒤 실제 수입/실제 지출에 반영됩니다.
+      </div>
+
+      <h3>등록된 반복 항목</h3>
+      <ul id="recurringList" class="recurring-list"></ul>
+      <p id="recurringEmptyMessage" class="empty-message">등록된 반복 항목이 없습니다.</p>
+    </div>
+  </div>
+
+  <div id="statsModal" class="modal hidden">
+    <div class="modal-box stats-modal-box">
+      <div class="modal-header">
+        <div>
+          <p class="sub-title">Category Statistics</p>
+          <h2>카테고리 통계</h2>
+        </div>
+        <button id="closeStatsBtn" class="circle-btn">×</button>
+      </div>
+
+      <div class="notice">
+        기본값은 현재 보고 있는 달의 1일부터 마지막 날까지입니다. 원하는 기간을 설정하면 해당 기간의 카테고리별 총액을 확인할 수 있습니다.
+      </div>
+
+      <div class="stats-filter">
+        <div class="form-row">
+          <label for="statsStartDate">시작일</label>
+          <input type="date" id="statsStartDate" />
+        </div>
+        <div class="form-row">
+          <label for="statsEndDate">종료일</label>
+          <input type="date" id="statsEndDate" />
+        </div>
+        <button id="applyStatsBtn" class="primary-btn">기간 적용</button>
+      </div>
+
+      <section class="stats-summary">
+        <article>
+          <span>기간 수입</span>
+          <strong id="statsIncomeTotal">0원</strong>
+        </article>
+        <article>
+          <span>기간 지출</span>
+          <strong id="statsExpenseTotal">0원</strong>
+        </article>
+        <article>
+          <span>기간 총액</span>
+          <strong id="statsNetTotal">0원</strong>
+        </article>
+      </section>
+
+      <h3>카테고리별 금액</h3>
+      <ul id="statsList" class="transaction-list"></ul>
+      <p id="statsEmptyMessage" class="empty-message">해당 기간의 내역이 없습니다.</p>
+    </div>
+  </div>
+
+
+  <div id="categoryPickerModal" class="modal hidden">
+    <div class="modal-box category-picker-box">
+      <div class="modal-header">
+        <div>
+          <p class="sub-title">Category Picker</p>
+          <h2 id="categoryPickerTitle">카테고리 선택</h2>
+        </div>
+        <button id="closeCategoryPickerBtn" class="circle-btn">×</button>
+      </div>
+
+      <div class="notice">
+        카테고리가 많을 때 이 목록에서 선택할 수 있습니다.
+      </div>
+
+      <ul id="categoryPickerList" class="manager-list"></ul>
+    </div>
+  </div>
+
+
+  <div id="appSettingsModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div>
+          <p class="sub-title">App Settings</p>
+          <h2>설정</h2>
+        </div>
+        <button id="closeAppSettingsBtn" class="circle-btn">×</button>
+      </div>
+
+      <section class="settings-section">
+        <div class="setting-row">
+          <div>
+            <strong>다크 모드</strong>
+            <small>눈이 덜 피로한 차분한 어두운 화면으로 전환합니다.</small>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="darkModeToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="theme-section">
+          <strong>테마 색상</strong>
+          <small>전체 포인트 색상을 부드러운 계열로 바꿀 수 있습니다.</small>
+          <div class="theme-buttons">
+            <button type="button" class="theme-btn theme-warm" data-theme="warm" aria-label="웜 베이지 테마"></button>
+            <button type="button" class="theme-btn theme-sage" data-theme="sage" aria-label="세이지 그린 테마"></button>
+            <button type="button" class="theme-btn theme-sky" data-theme="sky" aria-label="스카이 블루 테마"></button>
+            <button type="button" class="theme-btn theme-lavender" data-theme="lavender" aria-label="라벤더 테마"></button>
+            <button type="button" class="theme-btn theme-sand" data-theme="sand" aria-label="샌드 테마"></button>
+          </div>
+        </div>
+
+        <button id="settingsLogoutBtn" type="button" class="danger-btn full-width hidden">로그아웃</button>
+      </section>
+    </div>
+  </div>
+
+  <script type="module" src="script.js"></script>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker
+          .register("./service-worker.js")
+          .catch(error => console.log("Service Worker registration failed:", error));
+      });
+    }
+  </script>
+</body>
+</html>

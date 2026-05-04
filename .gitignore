@@ -1,0 +1,26 @@
+# macOS / editor
+.DS_Store
+__MACOSX/
+.vscode/
+.idea/
+
+# dependencies
+node_modules/
+
+# Firebase local cache / logs
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Capacitor / Android generated files
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/app/google-services.json
+*.apk
+*.aab
+
+# logs
+*.log
