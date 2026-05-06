@@ -475,3 +475,57 @@ body.dark-mode .day.selected {
 .theme-sand {
   background: linear-gradient(135deg, #d7bd96, #96754e);
 }
+
+.header-buttons {
+  flex-wrap: wrap;
+}
+
+/* 모바일 달력 칸 넘침 방지 */
+@media (max-width: 600px) {
+  .app {
+    width: 100%;
+    padding: 14px;
+    overflow-x: hidden;
+  }
+
+  .calendar-panel {
+    width: 100%;
+    padding: 16px 10px;
+    overflow: hidden;
+  }
+
+  .weekdays,
+  .calendar {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .calendar {
+    gap: 6px;
+  }
+
+  .day {
+    min-width: 0;
+    width: 100%;
+    min-height: 108px;
+    padding: 8px 4px;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .day-number {
+    font-size: 16px;
+  }
+
+  .day-money {
+    font-size: 12px;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    line-height: 1.35;
+  }
+
+  .floating-add-btn {
+    right: 18px;
+    bottom: 72px;
+  }
+}

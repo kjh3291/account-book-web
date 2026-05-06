@@ -25,9 +25,10 @@
           <span id="authStatus">로그인 전</span>
           <button id="loginBtn" class="outline-btn" type="button">Google 로그인</button>
         </div>
-        <button id="openStatsBtn" class="outline-btn">카테고리 통계</button>
-        <button id="openSettingsBtn" class="outline-btn">반복 설정</button>
-        <button id="openAppSettingsBtn" class="outline-btn">설정</button>
+        <button id="syncBtn" class="outline-btn">동기화</button>
+<button id="openStatsBtn" class="outline-btn">카테고리 통계</button>
+<button id="openSettingsBtn" class="outline-btn">반복 설정</button>
+<button id="openAppSettingsBtn" class="outline-btn">설정</button>
       </div>
     </header>
 
@@ -48,7 +49,7 @@
         <span>사용 가능 잔액</span>
         <strong id="availableMoneyMain">0원</strong>
         <small id="actualBalanceSub">실제 잔액 0원</small>
-        <small id="allocatedMoney">나눈 돈 0원</small>
+        <small id="allocatedMoney">이번 달 예산 총합 0원</small>
       </button>
     </section>
 
@@ -118,7 +119,7 @@
 
             <div class="form-row">
               <label for="budgetAmount">금액</label>
-              <input type="number" id="budgetAmount" min="0" step="10000" placeholder="예: 100000" required />
+              <input type="number" id="budgetAmount" min="0" step="any" placeholder="예: 100000" required />
             </div>
 
             <button type="submit" class="primary-btn" id="saveBudgetBtn">예산 나누기</button>
@@ -155,7 +156,7 @@
           <strong id="monthlyBudgetTotal">0원</strong>
         </article>
         <article class="summary-card expense">
-          <span>이번 달 실제 지출</span>
+          <span>예산 사용 금액</span>
           <strong id="monthlyBudgetUsed">0원</strong>
         </article>
         <article class="summary-card income">
@@ -176,7 +177,7 @@
 
             <div class="form-row">
               <label for="monthlyBudgetAmount">예산 금액</label>
-              <input type="number" id="monthlyBudgetAmount" min="0" step="10000" placeholder="예: 300000" required />
+              <input type="number" id="monthlyBudgetAmount" min="0" step="any" placeholder="예: 300000" required />
             </div>
 
             <button type="submit" class="primary-btn" id="saveMonthlyBudgetBtn">월 예산 저장</button>
@@ -226,7 +227,7 @@
 
         <div class="form-row">
           <label for="amount">금액</label>
-          <input type="number" id="amount" placeholder="예: 10000" min="0" step="10000" required />
+          <input type="number" id="amount" placeholder="예: 10000" min="0" step="any" required />
         </div>
 
         <div class="form-row">
@@ -306,7 +307,7 @@
 
         <div class="form-row">
           <label for="recurringAmount">금액</label>
-          <input type="number" id="recurringAmount" placeholder="예: 500000" min="0" step="10000" required />
+          <input type="number" id="recurringAmount" placeholder="예: 500000" min="0" step="any" required />
         </div>
 
         <div class="form-row">

@@ -1,4 +1,4 @@
-const CACHE_NAME = "account-book-pwa-v1";
+const CACHE_NAME = "account-book-pwa-v120";
 
 const APP_SHELL = [
   "./",

@@ -1,11 +1,14 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
+
 import {
   getAuth,
   GoogleAuthProvider,
+  signInWithCredential,
   signInWithPopup,
   signOut,
   onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
+
 import {
   getFirestore,
   doc,
@@ -35,6 +38,7 @@ const monthlyBudgetPage = document.getElementById("monthlyBudgetPage");
 
 const authStatus = document.getElementById("authStatus");
 const loginBtn = document.getElementById("loginBtn");
+const syncBtn = document.getElementById("syncBtn");
 
 const openAppSettingsBtn = document.getElementById("openAppSettingsBtn");
 const appSettingsModal = document.getElementById("appSettingsModal");
@@ -448,8 +452,8 @@ function getSelectedRecurringCategory() {
 
 function renderSummary() {
   const summary = getMonthSummary(viewYear, viewMonth);
-  const allocatedTotal = getAllocatedTotal();
-  const available = summary.actualBalance - allocatedTotal;
+  const monthlyBudgetTotal = getMonthlyBudgetTotal();
+  const available = summary.actualBalance - monthlyBudgetTotal;
 
   actualIncomeEl.textContent = formatMoney(summary.actualIncome);
   actualExpenseEl.textContent = formatMoney(summary.actualExpense);
@@ -458,7 +462,7 @@ function renderSummary() {
   expectedIncomeEl.textContent = `예정 수입 ${formatMoney(summary.expectedIncome)}`;
   expectedExpenseEl.textContent = `예정 지출 ${formatMoney(summary.expectedExpense)}`;
   actualBalanceSubEl.textContent = `실제 잔액 ${formatMoney(summary.actualBalance)}`;
-  allocatedMoneyEl.textContent = `나눈 돈 ${formatMoney(allocatedTotal)}`;
+  allocatedMoneyEl.textContent = `이번 달 예산 총합 ${formatMoney(monthlyBudgetTotal)}`;
 }
 
 function renderCalendar() {
@@ -609,6 +613,14 @@ function getMonthActualExpenseTotal(year, month) {
     .reduce((sum, item) => sum + Number(item.amount), 0);
 }
 
+function getMonthlyBudgetUsedTotal(year, month) {
+  const expenseMap = getMonthActualExpenseByCategory(year, month);
+
+  return monthlyBudgets.reduce((sum, budget) => {
+    return sum + Number(expenseMap[budget.category] || 0);
+  }, 0);
+}
+
 function showMainApp() {
   appPage.classList.remove("hidden");
   budgetPage.classList.add("hidden");
@@ -666,7 +678,7 @@ function renderBudgetPage() {
 function renderMonthlyBudgetPage() {
   const expenseMap = getMonthActualExpenseByCategory(viewYear, viewMonth);
   const budgetTotal = getMonthlyBudgetTotal();
-  const usedTotal = getMonthActualExpenseTotal(viewYear, viewMonth);
+  const usedTotal = getMonthlyBudgetUsedTotal(viewYear, viewMonth);
   const remainingTotal = budgetTotal - usedTotal;
 
   monthlyBudgetTotalEl.textContent = formatMoney(budgetTotal);
@@ -932,13 +944,10 @@ function addRecurringItem(event) {
   recurringItems.push(newRecurringItem);
   saveAll();
 
-  recurringForm.reset();
-  
-
-applyUiSettings();
+recurringForm.reset();
 setRecurringDayOptions();
-  ensureSelectedRecurringCategory();
-  render();
+ensureSelectedRecurringCategory();
+render();
 }
 
 window.deleteRecurringItem = function(id) {
@@ -1334,12 +1343,72 @@ appSettingsModal.addEventListener("click", event => {
 
 loginBtn.addEventListener("click", async () => {
   try {
-    await signInWithPopup(auth, googleProvider);
+    const isAndroidApp =
+      window.Capacitor &&
+      window.Capacitor.isNativePlatform &&
+      window.Capacitor.isNativePlatform();
+
+    if (isAndroidApp) {
+      const firebaseAuthPlugin =
+        window.Capacitor?.Plugins?.FirebaseAuthentication;
+
+      if (!firebaseAuthPlugin) {
+        throw new Error("FirebaseAuthentication 플러그인을 찾을 수 없습니다.");
+      }
+
+      const result = await firebaseAuthPlugin.signInWithGoogle();
+
+      console.log("Google Native Login Result:", JSON.stringify(result));
+
+      const idToken =
+        result?.credential?.idToken ||
+        result?.credential?.id_token ||
+        result?.idToken ||
+        result?.id_token;
+
+      const accessToken =
+        result?.credential?.accessToken ||
+        result?.credential?.access_token ||
+        result?.accessToken ||
+        result?.access_token;
+
+      if (!idToken && !accessToken) {
+        throw new Error("Google 로그인 토큰을 가져오지 못했습니다.");
+      }
+
+      const credential = GoogleAuthProvider.credential(idToken || null, accessToken || null);
+      await signInWithCredential(auth, credential);
+    } else {
+      await signInWithPopup(auth, googleProvider);
+    }
   } catch (error) {
-    console.error(error);
-    alert("Google 로그인에 실패했습니다. Firebase Authentication 설정을 확인해주세요.");
+    console.error("Google login error:", error);
+    alert(`Google 로그인 실패: ${error.code || error.message}`);
   }
 });
+
+
+syncBtn.addEventListener("click", async () => {
+  if (!currentUser) {
+    alert("동기화하려면 먼저 로그인해주세요.");
+    return;
+  }
+
+  try {
+    authStatus.textContent = "동기화 중";
+
+    await saveToFirebase();
+    await loadFromFirebase(currentUser);
+
+    authStatus.textContent = "로그인됨";
+    alert("동기화가 완료되었습니다.");
+  } catch (error) {
+    console.error(error);
+    authStatus.textContent = "동기화 실패";
+    alert("동기화에 실패했습니다.");
+  }
+});
+
 
 settingsLogoutBtn.addEventListener("click", async () => {
   try {
