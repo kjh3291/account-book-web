@@ -5,6 +5,8 @@ import {
   GoogleAuthProvider,
   signInWithCredential,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
@@ -32,20 +34,33 @@ const auth = getAuth(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 const db = getFirestore(firebaseApp);
 
+// 안드로이드 앱(Capacitor 네이티브)인지 여부. 로컬 알림은 폰(안드로이드 앱)에서만 동작합니다.
+const isNativeApp = Boolean(
+  window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()
+);
+
 const appPage = document.getElementById("appPage");
-const budgetPage = document.getElementById("budgetPage");
 const monthlyBudgetPage = document.getElementById("monthlyBudgetPage");
+const homeScreen = document.getElementById("homeScreen");
+const webDashboard = document.getElementById("webDashboard");
+const summaryGrid = document.getElementById("summaryGrid");
+const calendarPanel = document.getElementById("calendarPanel");
+const dailyListPanel = document.getElementById("dailyListPanel");
 
 const authStatus = document.getElementById("authStatus");
 const loginBtn = document.getElementById("loginBtn");
 const syncBtn = document.getElementById("syncBtn");
 
-const openAppSettingsBtn = document.getElementById("openAppSettingsBtn");
 const appSettingsModal = document.getElementById("appSettingsModal");
 const closeAppSettingsBtn = document.getElementById("closeAppSettingsBtn");
 const settingsLogoutBtn = document.getElementById("settingsLogoutBtn");
 const darkModeToggle = document.getElementById("darkModeToggle");
 const themeButtons = document.querySelectorAll(".theme-btn");
+const exportDataBtn = document.getElementById("exportDataBtn");
+const importDataBtn = document.getElementById("importDataBtn");
+const importFileInput = document.getElementById("importFileInput");
+const notificationSettingRow = document.getElementById("notificationSettingRow");
+const notificationToggle = document.getElementById("notificationToggle");
 
 const calendarEl = document.getElementById("calendar");
 const currentMonthTitle = document.getElementById("currentMonthTitle");
@@ -54,7 +69,12 @@ const nextMonthBtn = document.getElementById("nextMonthBtn");
 
 const selectedDateTitle = document.getElementById("selectedDateTitle");
 const addModal = document.getElementById("addModal");
-const openAddModalBtn = document.getElementById("openAddModalBtn");
+const bottomNav = document.getElementById("bottomNav");
+const bottomNavHomeBtn = document.getElementById("bottomNavHomeBtn");
+const bottomNavBudgetBtn = document.getElementById("bottomNavBudgetBtn");
+const bottomNavAddBtn = document.getElementById("bottomNavAddBtn");
+const bottomNavStatsBtn = document.getElementById("bottomNavStatsBtn");
+const bottomNavSettingsBtn = document.getElementById("bottomNavSettingsBtn");
 const closeAddModalBtn = document.getElementById("closeAddModalBtn");
 const addModalTitle = document.getElementById("addModalTitle");
 
@@ -104,16 +124,6 @@ const categoryCreateForm = document.getElementById("categoryCreateForm");
 const newCategoryNameInput = document.getElementById("newCategoryName");
 
 const goBudgetBtn = document.getElementById("goBudgetBtn");
-const backHomeBtn = document.getElementById("backHomeBtn");
-const budgetTotalBalanceEl = document.getElementById("budgetTotalBalance");
-const allocatedTotalEl = document.getElementById("allocatedTotal");
-const unallocatedTotalEl = document.getElementById("unallocatedTotal");
-const budgetForm = document.getElementById("budgetForm");
-const budgetCategoryInput = document.getElementById("budgetCategory");
-const budgetAmountInput = document.getElementById("budgetAmount");
-const saveBudgetBtn = document.getElementById("saveBudgetBtn");
-const budgetList = document.getElementById("budgetList");
-const budgetEmptyMessage = document.getElementById("budgetEmptyMessage");
 
 const backHomeFromMonthlyBudgetBtn = document.getElementById("backHomeFromMonthlyBudgetBtn");
 const monthlyBudgetForm = document.getElementById("monthlyBudgetForm");
@@ -127,7 +137,6 @@ const monthlyBudgetList = document.getElementById("monthlyBudgetList");
 const monthlyBudgetEmptyMessage = document.getElementById("monthlyBudgetEmptyMessage");
 
 const statsModal = document.getElementById("statsModal");
-const openStatsBtn = document.getElementById("openStatsBtn");
 const closeStatsBtn = document.getElementById("closeStatsBtn");
 const statsStartDateInput = document.getElementById("statsStartDate");
 const statsEndDateInput = document.getElementById("statsEndDate");
@@ -145,7 +154,6 @@ const statsEmptyMessage = document.getElementById("statsEmptyMessage");
 
 let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
 let recurringItems = JSON.parse(localStorage.getItem("recurringItems")) || [];
-let budgets = JSON.parse(localStorage.getItem("budgets")) || [];
 let monthlyBudgets = JSON.parse(localStorage.getItem("monthlyBudgets")) || [];
 
 let categories = JSON.parse(localStorage.getItem("categories")) || {
@@ -153,13 +161,15 @@ let categories = JSON.parse(localStorage.getItem("categories")) || {
   expense: []
 };
 
+let lastUsedType = "expense";
+let lastUsedCategory = { income: "", expense: "" };
+
 let selectedCategory = "";
 let selectedRecurringCategory = "";
 let categoryExpanded = false;
 let recurringCategoryExpanded = false;
 let categoryManagerMode = "transaction";
 let editingTransactionId = null;
-let editingBudgetId = null;
 let editingMonthlyBudgetId = null;
 let categoryPickerMode = "transaction";
 let currentUser = null;
@@ -200,7 +210,6 @@ function getAccountBookData() {
   return {
     transactions,
     recurringItems,
-    budgets,
     monthlyBudgets,
     categories
   };
@@ -209,7 +218,6 @@ function getAccountBookData() {
 function applyAccountBookData(data) {
   transactions = data.transactions || [];
   recurringItems = data.recurringItems || [];
-  budgets = data.budgets || [];
   monthlyBudgets = data.monthlyBudgets || [];
   categories = data.categories || { income: [], expense: [] };
 
@@ -217,10 +225,74 @@ function applyAccountBookData(data) {
   if (!categories.expense) categories.expense = [];
 }
 
+function exportAccountBookData() {
+  const data = {
+    exportedAt: new Date().toISOString(),
+    app: "calendar-account-book",
+    version: 1,
+    ...getAccountBookData()
+  };
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const today = new Date();
+  const dateStr = toDateKey(today.getFullYear(), today.getMonth(), today.getDate());
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `가계부-백업-${dateStr}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function isValidBackupData(data) {
+  if (!data || typeof data !== "object") return false;
+  if (data.transactions && !Array.isArray(data.transactions)) return false;
+  if (data.recurringItems && !Array.isArray(data.recurringItems)) return false;
+  if (data.budgets && !Array.isArray(data.budgets)) return false;
+  if (data.monthlyBudgets && !Array.isArray(data.monthlyBudgets)) return false;
+  if (data.categories && typeof data.categories !== "object") return false;
+  return true;
+}
+
+function importAccountBookDataFromFile(file) {
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = event => {
+    try {
+      const data = JSON.parse(event.target.result);
+
+      if (!isValidBackupData(data)) {
+        alert("올바른 백업 파일이 아닙니다.");
+        return;
+      }
+
+      if (!confirm("백업 파일을 불러오면 현재 데이터를 덮어씁니다. 계속할까요?")) return;
+
+      applyAccountBookData(data);
+      saveAll();
+      ensureSelectedCategory();
+      ensureSelectedRecurringCategory();
+      render();
+      alert("백업 데이터를 불러왔습니다.");
+    } catch (error) {
+      console.error(error);
+      alert("백업 파일을 읽는 중 문제가 발생했습니다. 파일 형식을 확인해주세요.");
+    } finally {
+      importFileInput.value = "";
+    }
+  };
+
+  reader.readAsText(file);
+}
+
 function saveLocal() {
   localStorage.setItem("transactions", JSON.stringify(transactions));
   localStorage.setItem("recurringItems", JSON.stringify(recurringItems));
-  localStorage.setItem("budgets", JSON.stringify(budgets));
   localStorage.setItem("monthlyBudgets", JSON.stringify(monthlyBudgets));
   localStorage.setItem("categories", JSON.stringify(categories));
 }
@@ -244,6 +316,8 @@ async function saveToFirebase() {
 function saveAll() {
   saveLocal();
   saveToFirebase();
+  refreshLocalNotifications();
+  updateBudgetStatusNotification();
 }
 
 async function loadFromFirebase(user) {
@@ -285,6 +359,420 @@ function getRecurringDateKey(item, year, month) {
   const lastDate = getLastDateOfMonth(year, month);
   const appliedDay = Math.min(Number(item.day), lastDate);
   return toDateKey(year, month, appliedDay);
+}
+
+// ---------------------------------------------------------------------------
+// 로컬 알림 (안드로이드 앱 전용)
+// 토스 등 외부 은행/카드 API 없이, 이미 등록된 "반복 수입/고정 지출" 데이터만으로
+// 결제/입금 며칠 전 알림과 이번 달 사용 가능 금액 알림을 예약합니다.
+// ---------------------------------------------------------------------------
+
+const DAILY_BALANCE_NOTIFICATION_ID = 900000001;
+const NOTIFICATION_HOUR = 9; // 매일 오전 9시에 알림
+
+function getLocalNotificationsPlugin() {
+  return window.Capacitor?.Plugins?.LocalNotifications || null;
+}
+
+function notificationsEnabledByUser() {
+  return localStorage.getItem("notificationsEnabled") !== "false";
+}
+
+// 문자열을 32비트 정수 해시로 변환 (Local Notifications의 id는 숫자여야 함)
+function hashToInt(text) {
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  }
+  return hash % 900000000; // 900000001(일일 잔액 알림 id)과 겹치지 않게 범위 제한
+}
+
+async function ensureNotificationPermission() {
+  const plugin = getLocalNotificationsPlugin();
+  if (!plugin) return false;
+
+  try {
+    const current = await plugin.checkPermissions();
+    if (current.display === "granted") return true;
+
+    const requested = await plugin.requestPermissions();
+    return requested.display === "granted";
+  } catch (error) {
+    console.error("알림 권한 확인/요청 실패:", error);
+    return false;
+  }
+}
+
+// 앞으로 monthsAhead개월 동안의 반복 항목 발생일을 모두 계산
+function getUpcomingRecurringOccurrences(monthsAhead) {
+  const occurrences = [];
+  const base = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  for (let m = 0; m < monthsAhead; m++) {
+    const year = base.getFullYear();
+    const month = base.getMonth() + m;
+    const targetDate = new Date(year, month, 1);
+
+    recurringItems.forEach(item => {
+      const dateKey = getRecurringDateKey(item, targetDate.getFullYear(), targetDate.getMonth());
+      occurrences.push({ item, dateKey });
+    });
+  }
+
+  return occurrences;
+}
+
+async function scheduleRecurringNotifications(plugin) {
+  const occurrences = getUpcomingRecurringOccurrences(3);
+  const notifications = [];
+  const now = new Date();
+
+  occurrences.forEach(({ item, dateKey }) => {
+    const occurrenceDate = dateKeyToDate(dateKey);
+
+    [3, 2, 1].forEach(daysBefore => {
+      const fireDate = new Date(occurrenceDate);
+      fireDate.setDate(fireDate.getDate() - daysBefore);
+      fireDate.setHours(NOTIFICATION_HOUR, 0, 0, 0);
+
+      if (fireDate <= now) return; // 이미 지난 알림은 예약하지 않음
+
+      const isIncome = item.type === "income";
+      const title = isIncome
+        ? `${daysBefore}일 후 용돈(수입) 입금 예정`
+        : `${daysBefore}일 후 자동결제 예정`;
+      const body = `${item.memo} · ${formatMoney(item.amount)} (${dateKey})`;
+
+      notifications.push({
+        id: hashToInt(`recurring-${item.id}-${dateKey}-${daysBefore}`),
+        title,
+        body,
+        schedule: { at: fireDate }
+      });
+    });
+  });
+
+  // 기존에 예약해둔 반복 알림(일일 잔액 알림 제외)은 취소하고 최신 데이터로 다시 예약
+  const pending = await plugin.getPending();
+  const idsToCancel = pending.notifications
+    .filter(n => n.id !== DAILY_BALANCE_NOTIFICATION_ID)
+    .map(n => ({ id: n.id }));
+
+  if (idsToCancel.length > 0) {
+    await plugin.cancel({ notifications: idsToCancel });
+  }
+
+  if (notifications.length > 0) {
+    await plugin.schedule({ notifications });
+  }
+}
+
+async function scheduleDailyBalanceNotification(plugin) {
+  const summary = getMonthSummary(today.getFullYear(), today.getMonth());
+  const monthlyBudgetTotal = getMonthlyBudgetTotal();
+  const available = summary.actualBalance - monthlyBudgetTotal;
+
+  const now = new Date();
+  const fireDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), NOTIFICATION_HOUR, 0, 0, 0);
+  if (fireDate <= now) fireDate.setDate(fireDate.getDate() + 1);
+
+  await plugin.cancel({ notifications: [{ id: DAILY_BALANCE_NOTIFICATION_ID }] });
+  await plugin.schedule({
+    notifications: [
+      {
+        id: DAILY_BALANCE_NOTIFICATION_ID,
+        title: "이번 달 사용 가능 금액",
+        body: `${formatMoney(available)} 사용 가능 (최근 접속 시점 기준)`,
+        schedule: { at: fireDate }
+      }
+    ]
+  });
+}
+
+async function cancelAllLocalNotifications() {
+  const plugin = getLocalNotificationsPlugin();
+  if (!plugin) return;
+
+  try {
+    const pending = await plugin.getPending();
+    if (pending.notifications.length > 0) {
+      await plugin.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) });
+    }
+  } catch (error) {
+    console.error("알림 취소 실패:", error);
+  }
+}
+
+// 반복 항목/거래 데이터가 바뀔 때마다 호출됩니다. 안드로이드 앱이 아니거나
+// 사용자가 알림을 꺼둔 경우에는 아무 것도 하지 않습니다.
+async function refreshLocalNotifications() {
+  if (!isNativeApp) return;
+  if (!notificationsEnabledByUser()) return;
+
+  const plugin = getLocalNotificationsPlugin();
+  if (!plugin) return;
+
+  const granted = await ensureNotificationPermission();
+  if (!granted) return;
+
+  try {
+    await scheduleRecurringNotifications(plugin);
+    await scheduleDailyBalanceNotification(plugin);
+  } catch (error) {
+    console.error("알림 예약 실패:", error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 금융 알림 파싱 + 알림창 상주 예산 (안드로이드 앱 전용)
+// ---------------------------------------------------------------------------
+
+function getNotificationBridgePlugin() {
+  return window.Capacitor?.Plugins?.NotificationBridge || null;
+}
+
+function getBudgetStatusPlugin() {
+  return window.Capacitor?.Plugins?.BudgetStatus || null;
+}
+
+function financeListenerEnabledByUser() {
+  return localStorage.getItem("financeListenerEnabled") === "true";
+}
+
+function budgetStatusEnabledByUser() {
+  return localStorage.getItem("budgetStatusEnabled") !== "false";
+}
+
+// 이번 달 앞으로 나갈 반복 지출 합계
+function getFutureRecurringExpenseTotal() {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const todayKey = toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
+
+  return recurringItems
+    .filter(item => item.type === "expense")
+    .reduce((sum, item) => {
+      const dateKey = getRecurringDateKey(item, now.getFullYear(), now.getMonth());
+      return dateKey >= todayKey ? sum + Number(item.amount) : sum;
+    }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// 잔액 관리 (토스 알림 자동 파싱 or 수동 입력)
+// ---------------------------------------------------------------------------
+
+function getLastKnownBalance() {
+  return Number(localStorage.getItem("lastKnownBalance") || 0);
+}
+
+function setLastKnownBalance(amount) {
+  localStorage.setItem("lastKnownBalance", String(amount));
+  localStorage.setItem("lastKnownBalanceAt", String(Date.now()));
+}
+
+function getBaseBalance() {
+  return Number(localStorage.getItem("baseBalance") || 0);
+}
+
+function getEffectiveBalance() {
+  const last = getLastKnownBalance();
+  return last > 0 ? last : getBaseBalance();
+}
+
+function getAvailableBudget() {
+  const balance = getEffectiveBalance();
+  if (balance > 0) {
+    return balance - getFutureRecurringExpenseTotal();
+  }
+  return getMonthSummary(today.getFullYear(), today.getMonth()).actualBalance
+    - getFutureRecurringExpenseTotal();
+}
+
+// ---------------------------------------------------------------------------
+// 알림 이력 저장 + 고정지출 패턴 감지
+// ---------------------------------------------------------------------------
+
+const NOTIFICATION_HISTORY_MAX = 200;
+
+function saveNotificationToHistory({ pkg, amount, memo, isIncome }) {
+  const history = JSON.parse(localStorage.getItem("notificationHistory") || "[]");
+  history.unshift({
+    pkg, amount, memo, isIncome,
+    date: toDateKey(today.getFullYear(), today.getMonth(), today.getDate())
+  });
+  if (history.length > NOTIFICATION_HISTORY_MAX) history.pop();
+  localStorage.setItem("notificationHistory", JSON.stringify(history));
+}
+
+function detectRecurringPattern({ pkg, amount, memo, isIncome }) {
+  if (memo.includes("자동이체") || memo.includes("자동납부")) return true;
+
+  const history = JSON.parse(localStorage.getItem("notificationHistory") || "[]");
+  const sameItems = history.filter(h =>
+    h.pkg === pkg && h.amount === amount && h.isIncome === isIncome
+  );
+  if (sameItems.length < 1) return false;
+
+  const latest = new Date(sameItems[0].date);
+  const now = new Date();
+  const daysDiff = Math.abs((now - latest) / (1000 * 60 * 60 * 24));
+  return daysDiff >= 25 && daysDiff <= 40;
+}
+
+function maybeShowRecurringPrompt({ pkg, amount, memo, isIncome }) {
+  const type = isIncome ? "income" : "expense";
+  const alreadyExists = recurringItems.some(
+    r => r.amount === amount && r.type === type
+  );
+  if (alreadyExists) return;
+  if (!detectRecurringPattern({ pkg, amount, memo, isIncome })) return;
+  showRecurringPromptBanner({ amount, isIncome, memo });
+}
+
+let pendingRecurringItem = null;
+
+function showRecurringPromptBanner({ amount, isIncome, memo }) {
+  pendingRecurringItem = { amount, isIncome, memo };
+  const text = document.getElementById("recurringPromptText");
+  const typeLabel = isIncome ? "수입" : "지출";
+  text.textContent = `매달 ${formatMoney(amount)} ${typeLabel}이 반복되는 것 같아요. 반복 항목으로 등록할까요?`;
+  document.getElementById("recurringPromptBanner").classList.remove("hidden");
+}
+
+// 가장 임박한 반복 항목 (7일 이내)
+function getNextUpcomingItem() {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const todayKey = toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const candidates = [];
+  for (let mOffset = 0; mOffset <= 1; mOffset++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + mOffset, 1);
+    recurringItems.forEach(item => {
+      const dateKey = getRecurringDateKey(item, d.getFullYear(), d.getMonth());
+      if (dateKey >= todayKey) {
+        const itemDate = dateKeyToDate(dateKey);
+        const daysUntil = Math.round((itemDate - now) / (1000 * 60 * 60 * 24));
+        if (daysUntil <= 7) candidates.push({ ...item, dateKey, daysUntil });
+      }
+    });
+  }
+  candidates.sort((a, b) => a.daysUntil - b.daysUntil);
+  return candidates[0] || null;
+}
+
+async function updateBudgetStatusNotification() {
+  if (!isNativeApp) return;
+  if (!budgetStatusEnabledByUser()) return;
+
+  const plugin = getBudgetStatusPlugin();
+  if (!plugin) return;
+
+  const summary = getMonthSummary(today.getFullYear(), today.getMonth());
+  const futureExpense = getFutureRecurringExpenseTotal();
+  const available = summary.actualBalance - futureExpense;
+
+  const title = `써도 되는 돈: ${formatMoney(available)}`;
+  const next = getNextUpcomingItem();
+  const body = next
+    ? `D-${next.daysUntil} ${next.memo} ${formatMoney(next.amount)}`
+    : "예정된 반복 지출 없음";
+
+  try {
+    await plugin.show({ title, body });
+  } catch (e) {
+    console.error("상주 알림 업데이트 실패:", e);
+  }
+}
+
+// 배너 자동 해제 타이머
+let autoRegisterDismissTimer = null;
+
+function showAutoRegisterBanner({ packageName, amount, isIncome, rawText }) {
+  const banner = document.getElementById("autoRegisterBanner");
+  const textEl = document.getElementById("autoRegisterText");
+  const categoriesEl = document.getElementById("autoRegisterCategories");
+
+  const typeLabel = isIncome ? "입금" : "결제";
+  const appLabel = packageName.includes("toss") ? "토스" :
+                   packageName.includes("kakao") ? "카카오뱅크" : "금융앱";
+
+  textEl.textContent = `[${appLabel}] ${formatMoney(amount)} ${typeLabel} 감지`;
+
+  categoriesEl.innerHTML = "";
+  const cats = isIncome ? (categories.income || []) : (categories.expense || []);
+  const displayCats = cats.slice(0, 4);
+  if (!displayCats.includes("기타")) displayCats.push("기타");
+
+  displayCats.forEach(cat => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = cat;
+    btn.addEventListener("click", () => {
+      registerAutoTransaction({ amount, isIncome, category: cat, rawText });
+      dismissAutoRegisterBanner();
+    });
+    categoriesEl.appendChild(btn);
+  });
+
+  banner.classList.remove("hidden");
+  requestAnimationFrame(() => banner.classList.add("visible"));
+
+  clearTimeout(autoRegisterDismissTimer);
+  autoRegisterDismissTimer = setTimeout(dismissAutoRegisterBanner, 10000);
+}
+
+function dismissAutoRegisterBanner() {
+  const banner = document.getElementById("autoRegisterBanner");
+  banner.classList.remove("visible");
+  clearTimeout(autoRegisterDismissTimer);
+  setTimeout(() => banner.classList.add("hidden"), 300);
+}
+
+function registerAutoTransaction({ amount, isIncome, category, rawText }) {
+  const now = new Date();
+  const dateKey = toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
+  const newItem = {
+    id: Date.now().toString(),
+    date: dateKey,
+    type: isIncome ? "income" : "expense",
+    amount: Number(amount),
+    category,
+    memo: rawText.length > 30 ? rawText.slice(0, 30) : rawText
+  };
+  transactions.push(newItem);
+  saveAll();
+  selectedDate = dateKey;
+  render();
+}
+
+async function setupFinanceNotificationListener() {
+  if (!isNativeApp) return;
+  if (!financeListenerEnabledByUser()) return;
+
+  const plugin = getNotificationBridgePlugin();
+  if (!plugin) return;
+
+  const { granted } = await plugin.checkPermission();
+  if (!granted) return;
+
+  plugin.addListener("financeNotification", data => {
+    if (data.balance > 0) {
+      setLastKnownBalance(data.balance);
+      renderHomeScreen();
+    }
+    showAutoRegisterBanner(data);
+    const memo = data.rawText || "";
+    saveNotificationToHistory({ pkg: data.packageName, amount: data.amount, memo, isIncome: data.isIncome });
+    maybeShowRecurringPrompt({ pkg: data.packageName, amount: data.amount, memo, isIncome: data.isIncome });
+  });
+}
+
+async function requestFinanceListenerPermission() {
+  const plugin = getNotificationBridgePlugin();
+  if (!plugin) return false;
+  await plugin.openPermissionSettings();
+  return false;
 }
 
 function getRecurringItemsForDate(dateKey) {
@@ -349,10 +837,6 @@ function getMonthSummary(year, month) {
   const expectedExpense = expectedItems.filter(item => item.type === "expense").reduce((sum, item) => sum + Number(item.amount), 0);
 
   return { actualIncome, actualExpense, actualBalance: actualIncome - actualExpense, expectedIncome, expectedExpense };
-}
-
-function getAllocatedTotal() {
-  return budgets.reduce((sum, item) => sum + Number(item.amount), 0);
 }
 
 function currentCategoryType() {
@@ -623,57 +1107,309 @@ function getMonthlyBudgetUsedTotal(year, month) {
 
 function showMainApp() {
   appPage.classList.remove("hidden");
-  budgetPage.classList.add("hidden");
   monthlyBudgetPage.classList.add("hidden");
+  updateBottomNavActive();
 }
 
 function showMonthlyBudgetPage() {
   appPage.classList.add("hidden");
-  budgetPage.classList.add("hidden");
   monthlyBudgetPage.classList.remove("hidden");
   renderMonthlyBudgetPage();
+  updateBottomNavActive();
 }
 
-function renderBudgetPage() {
+// ---------------------------------------------------------------------------
+// 웹 전용 월간 대시보드
+// ---------------------------------------------------------------------------
+
+function renderWebDashboard() {
   const summary = getMonthSummary(viewYear, viewMonth);
-  const actualBalance = summary.actualBalance;
-  const allocatedTotal = getAllocatedTotal();
-  const available = actualBalance - allocatedTotal;
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const isCurrentMonth = viewYear === now.getFullYear() && viewMonth === now.getMonth();
 
-  budgetTotalBalanceEl.textContent = formatMoney(actualBalance);
-  allocatedTotalEl.textContent = formatMoney(allocatedTotal);
-  unallocatedTotalEl.textContent = formatMoney(available);
+  document.getElementById("webMonthTitle").textContent =
+    `${viewYear}년 ${viewMonth + 1}월`;
 
-  budgetList.innerHTML = "";
+  // ── 스냅샷 ──
+  const remainingExpense = getRemainingRecurringExpense();
+  const remainingIncome  = getRemainingRecurringIncome();
+  const forecastBalance  = summary.actualIncome + remainingIncome
+                         - summary.actualExpense - remainingExpense;
 
-  if (budgets.length === 0) {
-    budgetEmptyMessage.style.display = "block";
+  const fbEl = document.getElementById("webForecastBalance");
+  fbEl.textContent = formatMoney(forecastBalance);
+  fbEl.className = forecastBalance >= 0 ? "web-snap-val green" : "web-snap-val red";
+  document.getElementById("webForecastSub").textContent =
+    `수입 ${formatMoney(summary.actualIncome + remainingIncome)} – 지출 ${formatMoney(summary.actualExpense + remainingExpense)}`;
+
+  const aeEl = document.getElementById("webActualExpense");
+  aeEl.textContent = formatMoney(summary.actualExpense);
+  aeEl.className = "web-snap-val red";
+  const budgetTotal = getMonthlyBudgetTotal();
+  document.getElementById("webActualExpenseSub").textContent =
+    budgetTotal > 0
+      ? `예산 대비 ${Math.round((summary.actualExpense / budgetTotal) * 100)}%`
+      : `예정 ${formatMoney(summary.expectedExpense)}`;
+
+  const aiEl = document.getElementById("webActualIncome");
+  aiEl.textContent = formatMoney(summary.actualIncome);
+  aiEl.className = "web-snap-val green";
+  document.getElementById("webActualIncomeSub").textContent =
+    remainingIncome > 0 ? `예정 +${formatMoney(remainingIncome)} 남음` : "이달 확정";
+
+  const reEl = document.getElementById("webRemainingExpense");
+  reEl.textContent = formatMoney(remainingExpense);
+  reEl.className = "web-snap-val";
+  const remCount = getRemainingRecurringItems().filter(i => i.type === "expense").length;
+  document.getElementById("webRemainingExpenseSub").textContent =
+    `고정 ${remCount}건 남음`;
+
+  renderCashflowTimeline();
+  renderCategoryBudgetBars();
+  renderWebMiniCalendar();
+}
+
+function getRemainingRecurringItems() {
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const todayKey = toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
+  const result = [];
+  for (let mOffset = 0; mOffset <= 1; mOffset++) {
+    const d = new Date(viewYear, viewMonth + mOffset, 1);
+    recurringItems.forEach(item => {
+      const dateKey = getRecurringDateKey(item, d.getFullYear(), d.getMonth());
+      if (dateKey.startsWith(`${viewYear}-${String(viewMonth + 1).padStart(2, "0")}`) && dateKey >= todayKey) {
+        result.push({ ...item, dateKey });
+      }
+    });
+  }
+  return result;
+}
+
+function getRemainingRecurringExpense() {
+  return getRemainingRecurringItems()
+    .filter(i => i.type === "expense")
+    .reduce((s, i) => s + Number(i.amount), 0);
+}
+
+function getRemainingRecurringIncome() {
+  return getRemainingRecurringItems()
+    .filter(i => i.type === "income")
+    .reduce((s, i) => s + Number(i.amount), 0);
+}
+
+function renderCashflowTimeline() {
+  const el = document.getElementById("cashflowTimeline");
+  const items = getRemainingRecurringItems()
+    .sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+
+  if (items.length === 0) {
+    el.innerHTML = `<p class="cf-empty">이달 남은 반복 항목 없음</p>`;
+    document.getElementById("forecastBox").innerHTML = "";
     return;
   }
 
-  budgetEmptyMessage.style.display = "none";
-
-  budgets.forEach(item => {
-    const li = document.createElement("li");
-    li.className = "transaction-item";
-    li.innerHTML = `
-      <div class="transaction-info">
-        <strong>${item.category}</strong>
-        <small>잔액에서 따로 나눠둔 돈</small>
-      </div>
-      <div class="transaction-amount balance">
-        ${formatMoney(Number(item.amount))}
-        <br />
-        <div class="item-actions">
-          <button class="edit-btn" onclick="editBudget('${item.id}')">수정</button>
-          <button class="delete-btn" onclick="deleteBudget('${item.id}')">삭제</button>
+  const maxAmt = Math.max(...items.map(i => Number(i.amount)));
+  el.innerHTML = items.map(item => {
+    const day = item.dateKey.split("-")[2];
+    const pct = Math.max(6, Math.round((Number(item.amount) / maxAmt) * 100));
+    const color = item.type === "income" ? "#1a7a3c" : "#d85a30";
+    const sign  = item.type === "income" ? "+" : "-";
+    return `
+      <div class="cf-row">
+        <span class="cf-date">${Number(day)}일</span>
+        <div class="cf-bar-wrap">
+          <div class="cf-fill" style="width:${pct}%;background:${color};"></div>
         </div>
+        <span class="cf-memo">${item.memo || ""}</span>
+        <span class="cf-amt" style="color:${color};">${sign}${formatMoney(item.amount)}</span>
+      </div>`;
+  }).join("");
+
+  const summary = getMonthSummary(viewYear, viewMonth);
+  const forecast = summary.actualIncome + getRemainingRecurringIncome()
+                 - summary.actualExpense - getRemainingRecurringExpense();
+  const isPositive = forecast >= 0;
+  document.getElementById("forecastBox").innerHTML = `
+    <div class="forecast-inner">
+      <div>
+        <span class="fc-lbl">월말 예상 잔액</span>
+        <strong class="fc-val ${isPositive ? "green" : "red"}">${formatMoney(forecast)}</strong>
       </div>
-    `;
-    budgetList.appendChild(li);
-  });
+      <span class="fc-tag ${isPositive ? "" : "warn"}">${isPositive ? "흑자 예상" : "적자 주의"}</span>
+    </div>`;
 }
 
+function renderCategoryBudgetBars() {
+  const el = document.getElementById("categoryBudgetBars");
+  const expenseMap = getMonthActualExpenseByCategory(viewYear, viewMonth);
+  const badge = document.getElementById("overBudgetBadge");
+
+  if (monthlyBudgets.length === 0) {
+    el.innerHTML = `<p class="cf-empty">예산 목표를 설정하면 소진율이 표시됩니다.</p>`;
+    badge.classList.add("hidden");
+    return;
+  }
+
+  let overCount = 0;
+  el.innerHTML = monthlyBudgets.map(b => {
+    const used = expenseMap[b.category] || 0;
+    const pct  = Number(b.amount) > 0 ? Math.round((used / Number(b.amount)) * 100) : 0;
+    const over = pct > 100;
+    if (over) overCount++;
+    const color = over ? "#d85a30" : pct >= 80 ? "#f5a623" : "#1d9e75";
+    return `
+      <div class="cat-bar-row">
+        <div class="cat-bar-top">
+          <span class="cat-name">${b.category}</span>
+          <span class="cat-pct ${over ? "over" : ""}">${formatMoney(used)} / ${formatMoney(b.amount)} · ${pct}%</span>
+        </div>
+        <div class="cat-track">
+          <div class="cat-fill" style="width:${Math.min(pct, 100)}%;background:${color};"></div>
+        </div>
+      </div>`;
+  }).join("");
+
+  if (overCount > 0) {
+    badge.textContent = `${overCount}건 초과`;
+    badge.classList.remove("hidden");
+  } else {
+    badge.classList.add("hidden");
+  }
+}
+
+function renderWebMiniCalendar() {
+  const el = document.getElementById("webMiniCalendar");
+  const lastDate = getLastDateOfMonth(viewYear, viewMonth);
+  const firstDow = new Date(viewYear, viewMonth, 1).getDay();
+
+  const expenseDays = new Set();
+  const incomeDays  = new Set();
+  transactions.forEach(t => {
+    if (!t.date.startsWith(`${viewYear}-${String(viewMonth + 1).padStart(2, "0")}`)) return;
+    const day = Number(t.date.split("-")[2]);
+    (t.type === "income" ? incomeDays : expenseDays).add(day);
+  });
+  recurringItems.forEach(item => {
+    const dateKey = getRecurringDateKey(item, viewYear, viewMonth);
+    if (!dateKey.startsWith(`${viewYear}-${String(viewMonth + 1).padStart(2, "0")}`)) return;
+    const day = Number(dateKey.split("-")[2]);
+    (item.type === "income" ? incomeDays : expenseDays).add(day);
+  });
+
+  const now = new Date();
+  const todayDay = (now.getFullYear() === viewYear && now.getMonth() === viewMonth)
+    ? now.getDate() : -1;
+
+  const weekdays = ["일","월","화","수","목","금","토"].map(
+    d => `<div class="mini-wd">${d}</div>`).join("");
+
+  const blanks = Array(firstDow).fill(`<div class="mini-day"></div>`).join("");
+
+  const days = Array.from({ length: lastDate }, (_, i) => {
+    const d = i + 1;
+    let cls = "mini-day";
+    if (d === todayDay) cls += " today";
+    const dots = [];
+    if (incomeDays.has(d))  dots.push(`<span class="dot income"></span>`);
+    if (expenseDays.has(d)) dots.push(`<span class="dot expense"></span>`);
+    return `<div class="${cls}">${d}${dots.length ? `<div class="dot-row">${dots.join("")}</div>` : ""}</div>`;
+  }).join("");
+
+  el.innerHTML = `<div class="mini-cal-grid">${weekdays}${blanks}${days}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// 홈 화면 렌더 ("써도 되는 돈" 중심)
+// ---------------------------------------------------------------------------
+
+let isCalendarMode = false;
+
+function renderHomeScreen() {
+  const effectiveBalance = getEffectiveBalance();
+
+  const setupCard = document.getElementById("balanceSetupCard");
+  setupCard.classList.toggle("hidden", effectiveBalance > 0);
+
+  const available = getAvailableBudget();
+  const heroEl = document.getElementById("heroAvailable");
+  const isNeg = available < 0;
+  heroEl.classList.toggle("negative", isNeg);
+  heroEl.classList.toggle("positive", !isNeg && effectiveBalance > 0);
+  heroEl.textContent = effectiveBalance > 0 ? formatMoney(available) : "잔액을 입력해주세요";
+
+  const lastBalance = getLastKnownBalance();
+  const lastAt = Number(localStorage.getItem("lastKnownBalanceAt") || 0);
+  const sourceEl = document.getElementById("heroSource");
+  if (lastBalance > 0 && lastAt) {
+    const min = Math.floor((Date.now() - lastAt) / 60000);
+    sourceEl.textContent = `토스 잔액 ${formatMoney(lastBalance)} · ${min < 1 ? "방금" : min + "분 전"} 업데이트`;
+  } else if (getBaseBalance() > 0) {
+    sourceEl.textContent = `수동 입력 잔액 ${formatMoney(getBaseBalance())} 기준`;
+  } else {
+    sourceEl.textContent = "잔액 입력 또는 토스 결제 알림 수신 시 자동 업데이트";
+  }
+
+  const budgetTotal = getMonthlyBudgetTotal();
+  const budgetUsed = getMonthActualExpenseTotal(today.getFullYear(), today.getMonth());
+  const budgetBar = document.getElementById("homeBudgetBar");
+  if (budgetTotal > 0) {
+    budgetBar.classList.remove("hidden");
+    const pct = Math.min(100, Math.round((budgetUsed / budgetTotal) * 100));
+    document.getElementById("budgetBarLabel").textContent =
+      `이번 달 예산 ${formatMoney(budgetUsed)} / ${formatMoney(budgetTotal)}`;
+    document.getElementById("budgetBarPercent").textContent = `${pct}%`;
+    const fill = document.getElementById("budgetBarFill");
+    fill.style.width = `${pct}%`;
+    fill.style.background = pct >= 90 ? "var(--expense)" : pct >= 70 ? "#f5a623" : "var(--accent)";
+  } else {
+    budgetBar.classList.add("hidden");
+  }
+
+  renderHomeDdayList();
+  renderHomeTodaySummary();
+}
+
+function renderHomeDdayList() {
+  const list = document.getElementById("homeDdayList");
+  const occurrences = getUpcomingRecurringOccurrences(2);
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const items = occurrences
+    .map(({ item, dateKey }) => {
+      const d = dateKeyToDate(dateKey);
+      const days = Math.round((d - now) / 86400000);
+      return { item, days };
+    })
+    .filter(({ days }) => days >= 0 && days <= 7)
+    .sort((a, b) => a.days - b.days)
+    .slice(0, 5);
+
+  list.innerHTML = items.length === 0
+    ? "<li class='dday-empty'>7일 내 예정 항목 없음</li>"
+    : items.map(({ item, days }) => `
+        <li class="dday-item ${item.type}">
+          <span class="dday-icon">${item.type === "income" ? "💰" : "💳"}</span>
+          <span class="dday-memo">${item.memo || item.category || ""}</span>
+          <span class="dday-badge">D-${days === 0 ? "day" : days}</span>
+          <span class="dday-amount">${formatMoney(item.amount)}</span>
+        </li>`).join("");
+}
+
+function renderHomeTodaySummary() {
+  const el = document.getElementById("homeTodaySummary");
+  const todayKey = toDateKey(today.getFullYear(), today.getMonth(), today.getDate());
+  const items = getAllItemsForDate(todayKey).filter(i => !i.isExpected && i.type === "expense");
+  const total = items.reduce((s, i) => s + Number(i.amount), 0);
+
+  if (items.length === 0) {
+    el.innerHTML = `<p class="today-empty">오늘 지출 없음</p>`;
+    return;
+  }
+  const preview = items.slice(0, 3).map(i =>
+    `<span>${i.memo || i.category} ${formatMoney(i.amount)}</span>`).join(" · ");
+  el.innerHTML = `
+    <p class="today-total">오늘 ${formatMoney(total)} 사용</p>
+    <p class="today-preview">${preview}${items.length > 3 ? ` 외 ${items.length - 3}건` : ""}</p>`;
+}
 
 function renderMonthlyBudgetPage() {
   const expenseMap = getMonthActualExpenseByCategory(viewYear, viewMonth);
@@ -818,11 +1554,17 @@ function renderCategoryManager() {
 }
 
 function render() {
-  renderSummary();
-  renderCalendar();
-  renderDailyList();
+  if (isNativeApp) {
+    renderHomeScreen();
+  } else {
+    if (!isCalendarMode) renderWebDashboard();
+  }
+  if (isCalendarMode) {
+    renderSummary();
+    renderCalendar();
+    renderDailyList();
+  }
   renderRecurringList();
-  renderBudgetPage();
   renderMonthlyBudgetPage();
   updateTransactionCategoryButtons();
   updateRecurringCategoryButtons();
@@ -834,11 +1576,17 @@ function render() {
 function openAddModal() {
   editingTransactionId = null;
   form.reset();
+
+  // 직전에 사용한 구분/카테고리를 기억해서 반복 입력 시 다시 고르지 않아도 되게 함
+  typeInput.value = lastUsedType;
+  selectedCategory = lastUsedCategory[typeInput.value] || "";
+
   saveTransactionBtn.textContent = "저장하기";
   addModalTitle.textContent = `${selectedDate} 내역 추가`;
   ensureSelectedCategory();
   updateTransactionCategoryButtons();
   addModal.classList.remove("hidden");
+  amountInput.focus();
 }
 
 function closeAddModal() {
@@ -879,6 +1627,9 @@ function addOrUpdateTransaction(event) {
       ...transactionData
     });
   }
+
+  lastUsedType = transactionData.type;
+  lastUsedCategory[transactionData.type] = transactionData.category;
 
   saveAll();
   closeAddModal();
@@ -956,64 +1707,6 @@ window.deleteRecurringItem = function(id) {
   saveAll();
   render();
 };
-
-function addBudget(event) {
-  event.preventDefault();
-
-  const summary = getMonthSummary(viewYear, viewMonth);
-  const amount = Number(budgetAmountInput.value);
-  const category = budgetCategoryInput.value.trim();
-
-  if (!category || amount <= 0) {
-    alert("항목과 금액을 올바르게 입력해주세요.");
-    return;
-  }
-
-  const currentEditingAmount = editingBudgetId
-    ? Number((budgets.find(item => item.id === editingBudgetId) || {}).amount || 0)
-    : 0;
-
-  const allocatedExceptCurrent = getAllocatedTotal() - currentEditingAmount;
-  const availableForThisBudget = summary.actualBalance - allocatedExceptCurrent;
-
-  if (amount > availableForThisBudget) {
-    alert("사용 가능 잔액보다 큰 금액은 배분할 수 없습니다.");
-    return;
-  }
-
-  if (editingBudgetId) {
-    budgets = budgets.map(item =>
-      item.id === editingBudgetId ? { ...item, category, amount } : item
-    );
-    editingBudgetId = null;
-    saveBudgetBtn.textContent = "예산 나누기";
-  } else {
-    budgets.push({ id: crypto.randomUUID(), category, amount });
-  }
-
-  saveAll();
-  budgetForm.reset();
-  render();
-}
-
-window.editBudget = function(id) {
-  const item = budgets.find(budget => budget.id === id);
-  if (!item) return;
-
-  editingBudgetId = id;
-  budgetCategoryInput.value = item.category;
-  budgetAmountInput.value = item.amount;
-  saveBudgetBtn.textContent = "수정 완료";
-  budgetCategoryInput.focus();
-};
-
-window.deleteBudget = function(id) {
-  if (!confirm("이 예산 배분을 삭제할까요?")) return;
-  budgets = budgets.filter(item => item.id !== id);
-  saveAll();
-  render();
-};
-
 
 function addMonthlyBudget(event) {
   event.preventDefault();
@@ -1216,13 +1909,60 @@ nextMonthBtn.addEventListener("click", () => {
   render();
 });
 
-openAddModalBtn.addEventListener("click", openAddModal);
+bottomNavAddBtn.addEventListener("click", openAddModal);
+
+bottomNavHomeBtn.addEventListener("click", () => {
+  isCalendarMode = false;
+  showMainApp();
+  summaryGrid.classList.add("hidden");
+  calendarPanel.classList.add("hidden");
+  dailyListPanel.classList.add("hidden");
+  if (isNativeApp) {
+    homeScreen.classList.remove("hidden");
+    webDashboard.classList.add("hidden");
+  } else {
+    webDashboard.classList.remove("hidden");
+    homeScreen.classList.add("hidden");
+    renderWebDashboard();
+  }
+});
+bottomNavBudgetBtn.addEventListener("click", showMonthlyBudgetPage);
+bottomNavStatsBtn.addEventListener("click", () => {
+  setDefaultStatsRange();
+  statsModal.classList.remove("hidden");
+  renderStats();
+});
+bottomNavSettingsBtn.addEventListener("click", () => {
+  appSettingsModal.classList.remove("hidden");
+});
+
+function updateBottomNavActive() {
+  const isBudgetPage = !monthlyBudgetPage.classList.contains("hidden");
+  bottomNavHomeBtn.classList.toggle("active", !isBudgetPage);
+  bottomNavBudgetBtn.classList.toggle("active", isBudgetPage);
+}
 closeAddModalBtn.addEventListener("click", closeAddModal);
 addModal.addEventListener("click", event => {
   if (event.target === addModal) closeAddModal();
 });
 
 form.addEventListener("submit", addOrUpdateTransaction);
+
+document.querySelectorAll(".quick-amount-btn").forEach(button => {
+  button.addEventListener("click", () => {
+    const addAmount = Number(button.dataset.amount);
+
+    if (addAmount === 0) {
+      amountInput.value = "";
+      amountInput.focus();
+      return;
+    }
+
+    const current = Number(amountInput.value) || 0;
+    amountInput.value = current + addAmount;
+    amountInput.focus();
+  });
+});
 
 typeInput.addEventListener("change", () => {
   categoryExpanded = false;
@@ -1238,7 +1978,6 @@ recurringTypeInput.addEventListener("change", () => {
 
 recurringForm.addEventListener("submit", addRecurringItem);
 resetBtn.addEventListener("click", resetAllTransactions);
-budgetForm.addEventListener("submit", addBudget);
 monthlyBudgetForm.addEventListener("submit", addMonthlyBudget);
 
 openCategoryManagerBtn.addEventListener("click", () => openCategoryManager("transaction"));
@@ -1268,24 +2007,11 @@ settingsModal.addEventListener("click", event => {
 
 goBudgetBtn.addEventListener("click", showMonthlyBudgetPage);
 
-backHomeBtn.addEventListener("click", () => {
-  showMainApp();
-  editingBudgetId = null;
-  budgetForm.reset();
-  saveBudgetBtn.textContent = "예산 나누기";
-});
-
 backHomeFromMonthlyBudgetBtn.addEventListener("click", () => {
   showMainApp();
   editingMonthlyBudgetId = null;
   monthlyBudgetForm.reset();
   saveMonthlyBudgetBtn.textContent = "월 예산 저장";
-});
-
-openStatsBtn.addEventListener("click", () => {
-  setDefaultStatsRange();
-  statsModal.classList.remove("hidden");
-  renderStats();
 });
 
 closeStatsBtn.addEventListener("click", () => statsModal.classList.add("hidden"));
@@ -1302,7 +2028,7 @@ function applyUiSettings() {
 
   document.body.classList.remove(
     "theme-coral", "theme-blue", "theme-green", "theme-purple", "theme-mono",
-    "theme-warm", "theme-sage", "theme-sky", "theme-lavender", "theme-sand"
+    "theme-warm", "theme-sage", "theme-sky", "theme-lavender", "theme-sand", "theme-monster"
   );
   document.body.classList.add(`theme-${savedTheme}`);
   document.body.classList.toggle("dark-mode", isDarkMode);
@@ -1319,15 +2045,172 @@ darkModeToggle.addEventListener("change", () => {
   applyUiSettings();
 });
 
+if (isNativeApp) {
+  notificationSettingRow.classList.remove("hidden");
+  notificationToggle.checked = notificationsEnabledByUser();
+} else {
+  notificationSettingRow.classList.add("hidden");
+}
+
+notificationToggle.addEventListener("change", () => {
+  localStorage.setItem("notificationsEnabled", String(notificationToggle.checked));
+
+  if (notificationToggle.checked) {
+    refreshLocalNotifications();
+  } else {
+    cancelAllLocalNotifications();
+  }
+});
+
+// 금융 알림 자동 등록 토글
+const financeListenerSettingRow = document.getElementById("financeListenerSettingRow");
+const financeListenerToggle = document.getElementById("financeListenerToggle");
+const budgetStatusSettingRow = document.getElementById("budgetStatusSettingRow");
+const budgetStatusToggle = document.getElementById("budgetStatusToggle");
+
+if (isNativeApp) {
+  financeListenerSettingRow.classList.remove("hidden");
+  financeListenerToggle.checked = financeListenerEnabledByUser();
+  budgetStatusSettingRow.classList.remove("hidden");
+  budgetStatusToggle.checked = budgetStatusEnabledByUser();
+}
+
+financeListenerToggle.addEventListener("change", async () => {
+  if (financeListenerToggle.checked) {
+    const plugin = getNotificationBridgePlugin();
+    if (plugin) {
+      const { granted } = await plugin.checkPermission();
+      if (!granted) {
+        financeListenerToggle.checked = false;
+        alert("알림 접근 권한이 필요합니다.\n설정 → 앱 → 특별한 앱 접근 → 알림 접근에서 이 앱을 활성화한 뒤 다시 켜주세요.");
+        await requestFinanceListenerPermission();
+        return;
+      }
+    }
+    localStorage.setItem("financeListenerEnabled", "true");
+    setupFinanceNotificationListener();
+  } else {
+    localStorage.setItem("financeListenerEnabled", "false");
+  }
+});
+
+budgetStatusToggle.addEventListener("change", async () => {
+  localStorage.setItem("budgetStatusEnabled", String(budgetStatusToggle.checked));
+  if (budgetStatusToggle.checked) {
+    updateBudgetStatusNotification();
+  } else {
+    const plugin = getBudgetStatusPlugin();
+    if (plugin) plugin.hide();
+  }
+});
+
+// 배너 무시 버튼
+document.getElementById("autoRegisterDismiss").addEventListener("click", dismissAutoRegisterBanner);
+
+// 반복 항목 제안 배너 버튼
+document.getElementById("recurringPromptYes").addEventListener("click", () => {
+  document.getElementById("recurringPromptBanner").classList.add("hidden");
+  if (pendingRecurringItem) {
+    recurringTypeInput.value = pendingRecurringItem.isIncome ? "income" : "expense";
+    recurringAmountInput.value = pendingRecurringItem.amount;
+    recurringMemoInput.value = pendingRecurringItem.memo || "";
+    selectedRecurringCategory = "";
+    updateRecurringCategoryButtons();
+    settingsModal.classList.remove("hidden");
+    pendingRecurringItem = null;
+  }
+});
+document.getElementById("recurringPromptNo").addEventListener("click", () => {
+  document.getElementById("recurringPromptBanner").classList.add("hidden");
+  pendingRecurringItem = null;
+});
+
+// 웹 대시보드 뷰 토글 (대시보드 ↔ 달력)
+document.getElementById("dashViewBtn").addEventListener("click", () => {
+  isCalendarMode = false;
+  document.getElementById("dashViewBtn").classList.add("active");
+  document.getElementById("calViewBtn").classList.remove("active");
+  summaryGrid.classList.add("hidden");
+  calendarPanel.classList.add("hidden");
+  dailyListPanel.classList.add("hidden");
+  webDashboard.classList.remove("hidden");
+  renderWebDashboard();
+});
+
+document.getElementById("calViewBtn").addEventListener("click", () => {
+  isCalendarMode = true;
+  document.getElementById("calViewBtn").classList.add("active");
+  document.getElementById("dashViewBtn").classList.remove("active");
+  webDashboard.classList.add("hidden");
+  summaryGrid.classList.remove("hidden");
+  calendarPanel.classList.remove("hidden");
+  dailyListPanel.classList.remove("hidden");
+  renderSummary();
+  renderCalendar();
+  renderDailyList();
+});
+
+document.getElementById("webShowFullCalBtn").addEventListener("click", () => {
+  document.getElementById("calViewBtn").click();
+});
+
+// 웹 대시보드 월 네비
+document.getElementById("webPrevMonthBtn").addEventListener("click", () => {
+  viewMonth--;
+  if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+  selectedDate = toDateKey(viewYear, viewMonth, 1);
+  render();
+});
+
+document.getElementById("webNextMonthBtn").addEventListener("click", () => {
+  viewMonth++;
+  if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+  selectedDate = toDateKey(viewYear, viewMonth, 1);
+  render();
+});
+
+// 잔액 초기 입력
+document.getElementById("balanceSetupBtn").addEventListener("click", () => {
+  const val = Number(document.getElementById("balanceSetupInput").value);
+  if (val > 0) {
+    localStorage.setItem("baseBalance", String(val));
+    localStorage.setItem("baseBalanceAt", new Date().toISOString());
+    renderHomeScreen();
+  }
+});
+
+// 달력 보기 전환 (앱)
+document.getElementById("showCalendarBtn").addEventListener("click", () => {
+  isCalendarMode = true;
+  homeScreen.classList.add("hidden");
+  webDashboard.classList.add("hidden");
+  summaryGrid.classList.remove("hidden");
+  calendarPanel.classList.remove("hidden");
+  dailyListPanel.classList.remove("hidden");
+  renderSummary();
+  renderCalendar();
+  renderDailyList();
+});
+
+// 설정에서 돌아왔을 때 알림 접근 권한 재확인
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible") return;
+  if (!isNativeApp || !financeListenerEnabledByUser()) return;
+  const plugin = getNotificationBridgePlugin();
+  if (!plugin) return;
+  const { granted } = await plugin.checkPermission();
+  if (granted && financeListenerToggle && !financeListenerToggle.checked) {
+    financeListenerToggle.checked = true;
+    localStorage.setItem("financeListenerEnabled", "true");
+    setupFinanceNotificationListener();
+  }
+});
+
 themeButtons.forEach(button => {
   button.addEventListener("click", () => {
     localStorage.setItem("uiTheme", button.dataset.theme);
     applyUiSettings();
   });
-});
-
-openAppSettingsBtn.addEventListener("click", () => {
-  appSettingsModal.classList.remove("hidden");
 });
 
 closeAppSettingsBtn.addEventListener("click", () => {
@@ -1341,50 +2224,93 @@ appSettingsModal.addEventListener("click", event => {
 });
 
 
+function explainAuthError(error) {
+  const code = error?.code || "";
+  const message = error?.message || "";
+
+  if (message.includes("No credentials available") || message.includes("NoCredentialException")) {
+    return "기기에 로그인된 Google 계정이 없습니다. 설정 > 계정에서 Google 계정을 추가한 뒤 다시 시도해주세요.";
+  }
+
+  switch (code) {
+    case "auth/unauthorized-domain":
+      return "이 주소(도메인)가 Firebase Authentication의 '승인된 도메인' 목록에 없습니다. Firebase 콘솔 > Authentication > Settings > Authorized domains 에서 현재 접속 주소를 추가해주세요.";
+    case "auth/popup-blocked":
+      return "브라우저가 로그인 팝업을 차단했습니다. 팝업 차단을 해제하거나 잠시 후 다시 시도해주세요.";
+    case "auth/popup-closed-by-user":
+      return "로그인 팝업이 완료되기 전에 닫혔습니다. 다시 시도해주세요.";
+    case "auth/network-request-failed":
+      return "네트워크 연결을 확인해주세요.";
+    case "auth/operation-not-supported-in-this-environment":
+      return "현재 실행 환경(예: 파일을 직접 열었거나 in-app 브라우저)에서는 Google 로그인이 지원되지 않습니다. Live Server 등 http(s) 환경에서 실행해주세요.";
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
+      return "Firebase API 키 설정이 올바르지 않습니다. firebaseConfig 값을 Firebase 콘솔과 다시 대조해주세요.";
+    default:
+      return error?.message || "알 수 없는 오류가 발생했습니다.";
+  }
+}
+
+async function loginWithGoogle() {
+  if (isNativeApp) {
+    const firebaseAuthPlugin = window.Capacitor?.Plugins?.FirebaseAuthentication;
+
+    if (!firebaseAuthPlugin) {
+      throw new Error("FirebaseAuthentication 플러그인을 찾을 수 없습니다. capacitor.config.json 플러그인 설정과 google-services.json 파일이 android 프로젝트에 있는지 확인해주세요.");
+    }
+
+    const result = await firebaseAuthPlugin.signInWithGoogle();
+
+    console.log("Google Native Login Result:", JSON.stringify(result));
+
+    const idToken =
+      result?.credential?.idToken ||
+      result?.credential?.id_token ||
+      result?.idToken ||
+      result?.id_token;
+
+    const accessToken =
+      result?.credential?.accessToken ||
+      result?.credential?.access_token ||
+      result?.accessToken ||
+      result?.access_token;
+
+    if (!idToken && !accessToken) {
+      throw new Error("Google 로그인 토큰을 가져오지 못했습니다. google-services.json / SHA-1 인증서 등록 여부를 확인해주세요.");
+    }
+
+    const credential = GoogleAuthProvider.credential(idToken || null, accessToken || null);
+    await signInWithCredential(auth, credential);
+    return;
+  }
+
+  if (location.protocol === "file:") {
+    throw { code: "auth/operation-not-supported-in-this-environment" };
+  }
+
+  try {
+    await signInWithPopup(auth, googleProvider);
+  } catch (error) {
+    if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
+      await signInWithRedirect(auth, googleProvider);
+      return;
+    }
+    throw error;
+  }
+}
+
 loginBtn.addEventListener("click", async () => {
   try {
-    const isAndroidApp =
-      window.Capacitor &&
-      window.Capacitor.isNativePlatform &&
-      window.Capacitor.isNativePlatform();
-
-    if (isAndroidApp) {
-      const firebaseAuthPlugin =
-        window.Capacitor?.Plugins?.FirebaseAuthentication;
-
-      if (!firebaseAuthPlugin) {
-        throw new Error("FirebaseAuthentication 플러그인을 찾을 수 없습니다.");
-      }
-
-      const result = await firebaseAuthPlugin.signInWithGoogle();
-
-      console.log("Google Native Login Result:", JSON.stringify(result));
-
-      const idToken =
-        result?.credential?.idToken ||
-        result?.credential?.id_token ||
-        result?.idToken ||
-        result?.id_token;
-
-      const accessToken =
-        result?.credential?.accessToken ||
-        result?.credential?.access_token ||
-        result?.accessToken ||
-        result?.access_token;
-
-      if (!idToken && !accessToken) {
-        throw new Error("Google 로그인 토큰을 가져오지 못했습니다.");
-      }
-
-      const credential = GoogleAuthProvider.credential(idToken || null, accessToken || null);
-      await signInWithCredential(auth, credential);
-    } else {
-      await signInWithPopup(auth, googleProvider);
-    }
+    await loginWithGoogle();
   } catch (error) {
     console.error("Google login error:", error);
-    alert(`Google 로그인 실패: ${error.code || error.message}`);
+    alert(`Google 로그인 실패\n${explainAuthError(error)}`);
   }
+});
+
+getRedirectResult(auth).catch(error => {
+  console.error("Google redirect login error:", error);
+  alert(`Google 로그인 실패\n${explainAuthError(error)}`);
 });
 
 
@@ -1409,6 +2335,15 @@ syncBtn.addEventListener("click", async () => {
   }
 });
 
+
+exportDataBtn.addEventListener("click", exportAccountBookData);
+
+importDataBtn.addEventListener("click", () => importFileInput.click());
+
+importFileInput.addEventListener("change", () => {
+  const file = importFileInput.files && importFileInput.files[0];
+  importAccountBookDataFromFile(file);
+});
 
 settingsLogoutBtn.addEventListener("click", async () => {
   try {
@@ -1435,7 +2370,26 @@ onAuthStateChanged(auth, user => {
   }
 });
 
+if (location.protocol === "file:" && !isNativeApp) {
+  authStatus.textContent = "file로 열림 (로그인 불가)";
+  loginBtn.title = "index.html을 직접 열면 Google 로그인이 동작하지 않습니다. Live Server 등 http(s) 환경에서 실행해주세요.";
+}
+
 setRecurringDayOptions();
 ensureSelectedCategory();
 ensureSelectedRecurringCategory();
+updateBottomNavActive();
+
+// 앱 vs 웹 초기 화면 분기
+if (isNativeApp) {
+  homeScreen.classList.remove("hidden");
+  webDashboard.classList.add("hidden");
+} else {
+  webDashboard.classList.remove("hidden");
+  homeScreen.classList.add("hidden");
+}
+
 render();
+refreshLocalNotifications();
+setupFinanceNotificationListener();
+updateBudgetStatusNotification();

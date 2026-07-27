@@ -2,10 +2,16 @@
   "appId": "com.gowoon.accountbook",
   "appName": "Account Book",
   "webDir": "www",
+  "android": {
+    "path": "../account-book-android"
+  },
   "plugins": {
     "FirebaseAuthentication": {
       "skipNativeAuth": true,
       "providers": ["google.com"]
+    },
+    "LocalNotifications": {
+      "iconColor": "#39ff14"
     }
   }
 }

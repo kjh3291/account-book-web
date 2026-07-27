@@ -3,22 +3,42 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>달력형 가계부</title>
+  <title>Leeway</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#d9826b" />
+  <meta name="theme-color" content="#0075EB" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="가계부" />
+  <meta name="apple-mobile-web-app-title" content="Leeway" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
 </head>
 <body>
+  <!-- 금융 알림 자동 등록 배너 (토스/은행 결제 감지 시 표시) -->
+  <div id="autoRegisterBanner" class="auto-register-banner hidden">
+    <div class="auto-register-content">
+      <p id="autoRegisterText" class="auto-register-text"></p>
+      <div id="autoRegisterCategories" class="auto-register-categories"></div>
+    </div>
+    <button id="autoRegisterDismiss" class="auto-register-dismiss" type="button">무시</button>
+  </div>
+
+  <!-- 반복 항목 등록 제안 배너 (같은 금액 패턴 감지 시 표시) -->
+  <div id="recurringPromptBanner" class="auto-register-banner hidden">
+    <div class="auto-register-content">
+      <p id="recurringPromptText" class="auto-register-text"></p>
+      <div class="auto-register-categories">
+        <button id="recurringPromptYes" type="button">반복 항목 등록</button>
+        <button id="recurringPromptNo" type="button">아니요</button>
+      </div>
+    </div>
+  </div>
+
   <div class="app" id="appPage">
     <header class="header">
       <div>
-        <p class="sub-title">Calendar Account Book</p>
-        <h1>달력형 가계부</h1>
+        <p class="sub-title">Your spending runway</p>
+        <h1>Leeway</h1>
       </div>
       <div class="header-buttons">
         <div class="auth-box">
@@ -26,13 +46,125 @@
           <button id="loginBtn" class="outline-btn" type="button">Google 로그인</button>
         </div>
         <button id="syncBtn" class="outline-btn">동기화</button>
-<button id="openStatsBtn" class="outline-btn">카테고리 통계</button>
-<button id="openSettingsBtn" class="outline-btn">반복 설정</button>
-<button id="openAppSettingsBtn" class="outline-btn">설정</button>
+        <button id="openSettingsBtn" class="outline-btn">반복 설정</button>
       </div>
     </header>
 
-    <section class="summary-grid">
+    <!-- 홈 화면: 써도 되는 돈 중심 뷰 (기본 표시) -->
+    <section id="homeScreen" class="home-screen">
+
+      <!-- 잔액 미입력 시 표시 -->
+      <div id="balanceSetupCard" class="balance-setup-card hidden">
+        <p>지금 통장에 얼마 있나요?</p>
+        <div class="balance-input-row">
+          <input type="number" id="balanceSetupInput" placeholder="0" inputmode="numeric" />
+          <span>원</span>
+          <button id="balanceSetupBtn" type="button">저장</button>
+        </div>
+      </div>
+
+      <!-- 써도 되는 돈 HERO -->
+      <div class="hero-card">
+        <span class="hero-label">써도 되는 돈</span>
+        <strong id="heroAvailable">계산 중...</strong>
+        <p id="heroSource" class="hero-source"></p>
+      </div>
+
+      <!-- 이번 달 예산 진행 바 -->
+      <div id="homeBudgetBar" class="home-budget-bar hidden">
+        <div class="budget-bar-row">
+          <span id="budgetBarLabel"></span>
+          <span id="budgetBarPercent"></span>
+        </div>
+        <div class="budget-bar-track">
+          <div id="budgetBarFill" class="budget-bar-fill"></div>
+        </div>
+      </div>
+
+      <!-- D-day 임박 반복 항목 -->
+      <ul id="homeDdayList" class="home-dday-list"></ul>
+
+      <!-- 오늘 지출 요약 -->
+      <div id="homeTodaySummary" class="home-today-summary"></div>
+
+      <!-- 달력·전체 내역으로 전환 -->
+      <button id="showCalendarBtn" type="button" class="show-calendar-btn">달력 · 전체 내역 보기</button>
+
+    </section>
+
+    <!-- 웹 전용 월간 대시보드 (브라우저에서만 표시, 앱에서는 hidden) -->
+    <section id="webDashboard" class="web-dashboard hidden">
+
+      <!-- 월 네비게이션 + 뷰 토글 -->
+      <div class="web-month-nav">
+        <button id="webPrevMonthBtn" class="circle-btn" type="button">‹</button>
+        <h2 id="webMonthTitle">2026년 7월</h2>
+        <div class="web-nav-right">
+          <div class="view-toggle-group">
+            <button id="dashViewBtn" class="vtog active" type="button">대시보드</button>
+            <button id="calViewBtn" class="vtog" type="button">달력</button>
+          </div>
+          <button id="webNextMonthBtn" class="circle-btn" type="button">›</button>
+        </div>
+      </div>
+
+      <!-- 스냅샷 4격자 -->
+      <div class="web-snapshot-grid">
+        <div class="web-snap-card hero">
+          <span class="web-snap-lbl">예상 월말 잔액</span>
+          <strong id="webForecastBalance">계산 중</strong>
+          <small id="webForecastSub"></small>
+        </div>
+        <div class="web-snap-card">
+          <span class="web-snap-lbl">실제 지출</span>
+          <strong id="webActualExpense"></strong>
+          <small id="webActualExpenseSub"></small>
+        </div>
+        <div class="web-snap-card">
+          <span class="web-snap-lbl">확정 수입</span>
+          <strong id="webActualIncome"></strong>
+          <small id="webActualIncomeSub"></small>
+        </div>
+        <div class="web-snap-card">
+          <span class="web-snap-lbl">남은 예정 지출</span>
+          <strong id="webRemainingExpense"></strong>
+          <small id="webRemainingExpenseSub"></small>
+        </div>
+      </div>
+
+      <!-- 현금흐름 + 카테고리 2단 -->
+      <div class="web-two-col">
+        <div class="web-panel">
+          <div class="web-panel-hdr">
+            <h3>현금흐름 타임라인</h3>
+            <span class="panel-hint">이달 남은 반복 항목</span>
+          </div>
+          <div id="cashflowTimeline"></div>
+          <div id="forecastBox" class="forecast-box"></div>
+        </div>
+
+        <div class="web-panel">
+          <div class="web-panel-hdr">
+            <h3>카테고리별 소진율</h3>
+            <span id="overBudgetBadge" class="over-badge hidden"></span>
+          </div>
+          <div id="categoryBudgetBars"></div>
+        </div>
+      </div>
+
+      <!-- 달력 미니 미리보기 -->
+      <div class="web-panel">
+        <div class="web-panel-hdr">
+          <h3>달력 미리보기</h3>
+          <button id="webShowFullCalBtn" type="button" class="text-link-btn">전체 달력 보기 →</button>
+        </div>
+        <div id="webMiniCalendar" class="web-mini-calendar"></div>
+      </div>
+
+    </section>
+
+    <!-- 달력 뷰 (홈에서 숨겨짐, showCalendarBtn 누르면 표시) -->
+    <section id="summaryGrid" class="summary-grid hidden">
       <article class="summary-card income">
         <span>실제 수입</span>
         <strong id="actualIncome">0원</strong>
@@ -53,7 +185,7 @@
       </button>
     </section>
 
-    <section class="calendar-panel">
+    <section id="calendarPanel" class="calendar-panel hidden">
       <div class="calendar-header">
         <button id="prevMonthBtn" class="circle-btn">‹</button>
         <h2 id="currentMonthTitle">2026년 5월</h2>
@@ -67,7 +199,7 @@
       <div id="calendar" class="calendar"></div>
     </section>
 
-    <section class="panel">
+    <section id="dailyListPanel" class="panel hidden">
       <div class="list-header">
         <h2 id="selectedDateTitle">선택 날짜 내역</h2>
         <button id="resetBtn" class="danger-btn">일반 내역 전체 삭제</button>
@@ -77,68 +209,7 @@
       <p id="emptyMessage" class="empty-message">선택한 날짜에 등록된 내역이 없습니다.</p>
     </section>
 
-    <button id="openAddModalBtn" class="floating-add-btn">+</button>
   </div>
-
-  <section id="budgetPage" class="budget-page hidden">
-    <div class="budget-container">
-      <header class="budget-header">
-        <div>
-          <p class="sub-title">Budget Split</p>
-          <h1>잔액 예산 나누기</h1>
-        </div>
-        <button id="backHomeBtn" class="outline-btn">달력으로 돌아가기</button>
-      </header>
-
-      <section class="summary-grid">
-        <article class="summary-card balance">
-          <span>실제 잔액</span>
-          <strong id="budgetTotalBalance">0원</strong>
-        </article>
-
-        <article class="summary-card expense">
-          <span>이미 나눈 돈</span>
-          <strong id="allocatedTotal">0원</strong>
-        </article>
-
-        <article class="summary-card income">
-          <span>사용 가능 잔액</span>
-          <strong id="unallocatedTotal">0원</strong>
-        </article>
-      </section>
-
-      <main class="content">
-        <section class="panel">
-          <h2>예산 배분 추가</h2>
-
-          <form id="budgetForm">
-            <div class="form-row">
-              <label for="budgetCategory">항목 직접 입력</label>
-              <input type="text" id="budgetCategory" placeholder="예: 식비, 교통비, 적금, 여행비" required />
-            </div>
-
-            <div class="form-row">
-              <label for="budgetAmount">금액</label>
-              <input type="number" id="budgetAmount" min="0" step="any" placeholder="예: 100000" required />
-            </div>
-
-            <button type="submit" class="primary-btn" id="saveBudgetBtn">예산 나누기</button>
-          </form>
-
-          <div class="notice">
-            실제 잔액이 있어도 전부 써도 되는 돈은 아닐 수 있습니다. 식비, 교통비, 적금처럼 나누면 사용 가능 잔액을 쉽게 확인할 수 있습니다.
-          </div>
-        </section>
-
-        <section class="panel">
-          <h2>나눈 예산 목록</h2>
-          <ul id="budgetList" class="transaction-list"></ul>
-          <p id="budgetEmptyMessage" class="empty-message">아직 나눈 예산이 없습니다.</p>
-        </section>
-      </main>
-    </div>
-  </section>
-
 
   <section id="monthlyBudgetPage" class="budget-page hidden">
     <div class="budget-container">
@@ -147,7 +218,9 @@
           <p class="sub-title">Monthly Budget Target</p>
           <h1>월별 예산 목표</h1>
         </div>
-        <button id="backHomeFromMonthlyBudgetBtn" class="outline-btn">달력으로 돌아가기</button>
+        <div class="header-buttons">
+          <button id="backHomeFromMonthlyBudgetBtn" class="outline-btn">달력으로 돌아가기</button>
+        </div>
       </header>
 
       <section class="summary-grid">
@@ -228,6 +301,13 @@
         <div class="form-row">
           <label for="amount">금액</label>
           <input type="number" id="amount" placeholder="예: 10000" min="0" step="any" required />
+          <div class="quick-amount-buttons">
+            <button type="button" class="quick-amount-btn" data-amount="1000">+1,000</button>
+            <button type="button" class="quick-amount-btn" data-amount="5000">+5,000</button>
+            <button type="button" class="quick-amount-btn" data-amount="10000">+10,000</button>
+            <button type="button" class="quick-amount-btn" data-amount="50000">+50,000</button>
+            <button type="button" class="quick-amount-btn quick-amount-clear" data-amount="0">초기화</button>
+          </div>
         </div>
 
         <div class="form-row">
@@ -417,6 +497,39 @@
           </label>
         </div>
 
+        <div class="setting-row hidden" id="notificationSettingRow">
+          <div>
+            <strong>결제·입금 알림 (안드로이드 앱 전용)</strong>
+            <small>반복 항목의 결제일/입금일 3일 전부터 매일 알림을 보내고, 이번 달 사용 가능 금액도 하루 한 번 알려드립니다.</small>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="notificationToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row hidden" id="financeListenerSettingRow">
+          <div>
+            <strong>토스/은행 결제 자동 등록 (안드로이드 앱 전용)</strong>
+            <small>토스, 신한, 국민 등 금융 앱의 결제·입금 알림을 감지해 거래를 자동으로 등록합니다. 활성화 시 알림 접근 권한이 필요합니다.</small>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="financeListenerToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row hidden" id="budgetStatusSettingRow">
+          <div>
+            <strong>알림창 예산 현황 (안드로이드 앱 전용)</strong>
+            <small>알림창에 "써도 되는 돈"을 항상 표시합니다.</small>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="budgetStatusToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
         <div class="theme-section">
           <strong>테마 색상</strong>
           <small>전체 포인트 색상을 부드러운 계열로 바꿀 수 있습니다.</small>
@@ -426,13 +539,40 @@
             <button type="button" class="theme-btn theme-sky" data-theme="sky" aria-label="스카이 블루 테마"></button>
             <button type="button" class="theme-btn theme-lavender" data-theme="lavender" aria-label="라벤더 테마"></button>
             <button type="button" class="theme-btn theme-sand" data-theme="sand" aria-label="샌드 테마"></button>
+            <button type="button" class="theme-btn theme-monster" data-theme="monster" aria-label="블랙 그린 몬스터 테마"></button>
           </div>
+        </div>
+
+        <div class="theme-section backup-section">
+          <strong>데이터 백업</strong>
+          <small>가계부 데이터를 파일로 저장하거나, 저장해둔 파일을 다시 불러올 수 있습니다. 기기를 바꾸거나 데이터가 사라졌을 때 대비할 수 있습니다.</small>
+          <button id="exportDataBtn" type="button" class="outline-btn full-width">내보내기 (백업 파일 저장)</button>
+          <button id="importDataBtn" type="button" class="outline-btn full-width">가져오기 (백업 파일 불러오기)</button>
+          <input type="file" id="importFileInput" accept="application/json" class="hidden" />
         </div>
 
         <button id="settingsLogoutBtn" type="button" class="danger-btn full-width hidden">로그아웃</button>
       </section>
     </div>
   </div>
+
+  <nav id="bottomNav" class="bottom-nav">
+    <button type="button" id="bottomNavHomeBtn" class="bottom-nav-btn">
+      <span class="bottom-nav-label">홈</span>
+    </button>
+    <button type="button" id="bottomNavBudgetBtn" class="bottom-nav-btn">
+      <span class="bottom-nav-label">예산</span>
+    </button>
+    <button type="button" id="bottomNavAddBtn" class="bottom-nav-btn bottom-nav-add">
+      <span class="bottom-nav-label">추가</span>
+    </button>
+    <button type="button" id="bottomNavStatsBtn" class="bottom-nav-btn">
+      <span class="bottom-nav-label">통계</span>
+    </button>
+    <button type="button" id="bottomNavSettingsBtn" class="bottom-nav-btn">
+      <span class="bottom-nav-label">설정</span>
+    </button>
+  </nav>
 
   <script type="module" src="script.js"></script>
 
