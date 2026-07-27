@@ -685,6 +685,37 @@ async function updateBudgetStatusNotification() {
   }
 }
 
+// 이번 결제가 남은 여유돈의 20% 이상을 갉아먹거나 여유돈을 마이너스로 만들 때만
+// urgent(진동/우선순위 높음) 처리 — 매번 울리면 그냥 시끄러운 앱이 되므로.
+function computeImpactNotificationContent({ amount, beforeAvailable, afterAvailable }) {
+  const urgent = afterAvailable < 0 ||
+    (beforeAvailable > 0 && (beforeAvailable - afterAvailable) / beforeAvailable >= 0.2);
+
+  const title = `${formatMoney(amount)} 결제`;
+  const body = afterAvailable >= 0
+    ? `남은 여유돈 ${formatMoney(afterAvailable)}`
+    : `여유돈 소진! ${formatMoney(Math.abs(afterAvailable))} 초과`;
+
+  return { title, body, urgent };
+}
+
+// 결제 감지 즉시 "이 결제 후 남은 여유돈"을 보여주는 1회성 알림.
+async function showImpactNotification({ amount, beforeAvailable, afterAvailable }) {
+  if (!isNativeApp) return;
+  if (!budgetStatusEnabledByUser()) return;
+
+  const plugin = getBudgetStatusPlugin();
+  if (!plugin) return;
+
+  const { title, body, urgent } = computeImpactNotificationContent({ amount, beforeAvailable, afterAvailable });
+
+  try {
+    await plugin.showImpact({ title, body, urgent });
+  } catch (e) {
+    console.error("결제 임팩트 알림 실패:", e);
+  }
+}
+
 // 배너 자동 해제 타이머
 let autoRegisterDismissTimer = null;
 
@@ -757,9 +788,16 @@ async function setupFinanceNotificationListener() {
   if (!granted) return;
 
   plugin.addListener("financeNotification", data => {
+    const beforeAvailable = getAvailableBudget();
     if (data.balance > 0) {
       setLastKnownBalance(data.balance);
       renderHomeScreen();
+    }
+    if (!data.isIncome) {
+      const afterAvailable = data.balance > 0
+        ? getAvailableBudget()
+        : beforeAvailable - data.amount;
+      showImpactNotification({ amount: data.amount, beforeAvailable, afterAvailable });
     }
     showAutoRegisterBanner(data);
     const memo = data.rawText || "";
